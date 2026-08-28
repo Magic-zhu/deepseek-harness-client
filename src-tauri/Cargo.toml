@@ -1,0 +1,31 @@
+[package]
+name = "dsh-client"
+version = "0.1.0"
+description = "DeepSeek Harness desktop client (Tauri shell)"
+edition = "2021"
+
+[workspace]
+members = ["crates/dsh-supervisor", "crates/dsh-bridge"]
+resolver = "2"
+
+[lib]
+name = "dsh_client_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+dsh-bridge = { path = "crates/dsh-bridge" }
+dsh-supervisor = { path = "crates/dsh-supervisor" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = [] }
+tokio = { version = "1", features = ["process", "rt-multi-thread", "sync", "time"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+strip = true

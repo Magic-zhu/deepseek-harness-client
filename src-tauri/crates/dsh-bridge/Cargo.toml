@@ -1,0 +1,14 @@
+[package]
+name = "dsh-bridge"
+version = "0.1.0"
+edition = "2021"
+description = "Wire client for the dsh daemon /api envelope: request build, response validation, error folding. Loopback plain HTTP only."
+
+[dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
