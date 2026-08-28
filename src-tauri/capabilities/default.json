@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "主窗口与插件窗口的基础能力：事件与窗口 API，仅此而已。",
+  "windows": ["main", "plugins"],
+  "permissions": ["core:default"]
+}

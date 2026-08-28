@@ -81,6 +81,18 @@ fn daemon_stop(state: tauri::State<DaemonState>) -> Result<(), String> {
     Ok(())
 }
 
+/// Show and focus the plugin management window (declared hidden at startup
+/// in tauri.conf.json, so it is already loaded and subscribed).
+#[tauri::command]
+fn open_plugins_window(app: tauri::AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window("plugins")
+        .ok_or_else(|| "插件窗口未创建（tauri.conf.json 缺少 plugins 声明）".to_string())?;
+    window.show().map_err(|e| e.to_string())?;
+    window.set_focus().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Flat wrapper so the UI gets one struct with both the probe result and
 /// the resolved command string for the diagnostics card.
 #[derive(Serialize, Clone)]
@@ -261,6 +273,7 @@ pub fn run() {
             daemon_log_tail,
             daemon_restart,
             daemon_stop,
+            open_plugins_window,
             preflight_check,
             dsh_api_call
         ])
