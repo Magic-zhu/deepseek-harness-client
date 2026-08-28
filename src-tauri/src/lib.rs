@@ -1,6 +1,7 @@
 //! dsh-client application layer: a thin command surface plus event
 //! forwarding. Mechanism only — every policy decision stays in dsh.
 
+use dsh_profile::tasks::{PluginTaskKind, PluginTaskRunner};
 use dsh_supervisor::{self, LogStream, RestartPolicy, Supervisor, SupervisorEvent};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, Url, WebviewWindow};
@@ -10,6 +11,13 @@ use tracing::{debug, error, info, warn};
 #[derive(Clone)]
 struct DaemonState {
     supervisor: Supervisor,
+}
+
+/// Plugin install/remove task queue. Independent of preflight: the CLI talks
+/// to the profile directory, not the daemon.
+#[derive(Clone)]
+struct PluginTasksState {
+    runner: PluginTaskRunner,
 }
 
 /// Persistent across both preflight-failed and preflight-passed lifecycles so
@@ -79,6 +87,16 @@ fn daemon_restart(state: tauri::State<DaemonState>) -> Result<(), String> {
 fn daemon_stop(state: tauri::State<DaemonState>) -> Result<(), String> {
     state.supervisor.stop();
     Ok(())
+}
+
+#[tauri::command]
+fn plugin_install(state: tauri::State<'_, PluginTasksState>, spec: String) -> Result<String, String> {
+    state.runner.submit(PluginTaskKind::Install, spec)
+}
+
+#[tauri::command]
+fn plugin_remove(state: tauri::State<'_, PluginTasksState>, spec: String) -> Result<String, String> {
+    state.runner.submit(PluginTaskKind::Remove, spec)
 }
 
 /// Show and focus the plugin management window (declared hidden at startup
@@ -217,6 +235,25 @@ async fn forward_task(app: AppHandle, supervisor: Supervisor, home: Url) {
     }
 }
 
+/// Forward `PluginTaskView` updates as `plugins://task` (all windows; the
+/// plugins window is the only listener).
+async fn plugins_forward_task(app: AppHandle, runner: PluginTaskRunner) {
+    let mut receiver = runner.subscribe();
+    loop {
+        match receiver.recv().await {
+            Ok(view) => {
+                let _ = app.emit("plugins://task", &view);
+            }
+            Err(tokio::sync::broadcast::error::RecvError::Lagged(count)) => {
+                // Full-view events are cumulative, so a skipped intermediate
+                // state is harmless.
+                warn!(count, "plugins://task lag");
+            }
+            Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     init_tracing();
@@ -233,6 +270,11 @@ pub fn run() {
                 bin_override: override_token,
                 path_node: path_node.clone(),
             });
+
+            let invocation = dsh_supervisor::resolve_invocation(bin_override.as_deref());
+            let runner = tauri::async_runtime::block_on(async { PluginTaskRunner::start(invocation) });
+            app.manage(PluginTasksState { runner: runner.clone() });
+            tauri::async_runtime::spawn(plugins_forward_task(app.handle().clone(), runner));
 
             let report = tauri::async_runtime::block_on(async {
                 dsh_supervisor::run_probe(
@@ -284,6 +326,8 @@ pub fn run() {
             daemon_restart,
             daemon_stop,
             open_plugins_window,
+            plugin_install,
+            plugin_remove,
             plugin_set_enabled,
             preflight_check,
             dsh_api_call
