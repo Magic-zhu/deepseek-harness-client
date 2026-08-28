@@ -6,6 +6,8 @@ import { DAEMON_CHANNELS, fetchStatus } from '../daemon'
 import type { DaemonEvent, DaemonStatus } from '../daemon'
 import InventoryList from './InventoryList.vue'
 import DynamicList from './DynamicList.vue'
+import InstallDialog from './InstallDialog.vue'
+import TaskCenter from './TaskCenter.vue'
 import { fetchDynamicInventory, fetchInventory, setPluginEnabled, usePolling } from './plugins'
 import type { DynamicPluginRow, PendingIntent, PluginEntry } from './plugins'
 
@@ -74,6 +76,12 @@ function showNotice(text: string): void {
   }, 6000)
 }
 
+const dialog = ref<'install' | 'remove' | null>(null)
+
+function onTaskSubmitted(): void {
+  tab.value = 'tasks'
+}
+
 async function onToggle(entry: PluginEntry): Promise<void> {
   const intent = !entry.enabled
   try {
@@ -124,6 +132,10 @@ usePolling(loadInventories)
   <main class="plugins">
     <header class="bar">
       <h1>插件管理</h1>
+      <div class="bar-actions">
+        <button class="mini" @click="dialog = 'install'">安装插件</button>
+        <button class="mini" @click="dialog = 'remove'">移除插件</button>
+      </div>
       <span class="daemon-state" :data-ready="daemonReady">{{ statusText }}</span>
     </header>
     <p v-if="notice" class="notice">{{ notice }}</p>
@@ -143,8 +155,10 @@ usePolling(loadInventories)
         <p v-if="loadError" class="error">{{ loadError }}</p>
         <InventoryList v-if="tab === 'inventory'" :entries="entries" :pending="pending" @toggle="onToggle" />
         <DynamicList v-else-if="tab === 'dynamic'" :rows="dynamicRows" />
+        <TaskCenter v-else-if="tab === 'tasks'" @notice="showNotice" />
         <p v-else class="waiting">（后续切片交付此面板）</p>
       </template>
     </section>
+    <InstallDialog v-if="dialog" :mode="dialog" @close="dialog = null" @submitted="onTaskSubmitted" />
   </main>
 </template>

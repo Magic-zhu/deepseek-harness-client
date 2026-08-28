@@ -110,3 +110,18 @@ export interface PendingIntent {
 /** enabled 是 UI 语义；patch 层写的是 disabled 标志，取反。 */
 export const setPluginEnabled = (entryId: string, enabled: boolean): Promise<void> =>
   invoke('plugin_set_enabled', { entryId, disabled: !enabled })
+
+// ---- 安装/移除任务 ----
+
+export interface PluginTaskView {
+  taskId: string
+  kind: 'install' | 'remove'
+  spec: string
+  status: 'running' | 'done' | 'failed'
+  outputTail: string[]
+  exitCode: number | null
+}
+
+export const installPlugin = (spec: string): Promise<string> => invoke('plugin_install', { spec })
+
+export const removePlugin = (spec: string): Promise<string> => invoke('plugin_remove', { spec })
