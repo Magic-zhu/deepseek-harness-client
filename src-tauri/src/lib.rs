@@ -147,6 +147,16 @@ async fn dsh_api_call(
         .map_err(|err| err.to_string())
 }
 
+/// Write one managed patch line pair (`disabled: true|false`) for the entry.
+/// Hot application is upstream's HMR; the frontend verifies by polling.
+#[tauri::command]
+fn plugin_set_enabled(entry_id: String, disabled: bool) -> Result<(), String> {
+    let home = dsh_profile::home::resolve_dsh_home()
+        .ok_or_else(|| "无法定位 dsh home（DSH_HOME 未设置且无法解析用户目录）".to_string())?;
+    let patch = dsh_profile::home::patch_file(&dsh_profile::home::profile_dir(&home));
+    dsh_profile::patch::set_disabled(&patch, &entry_id, disabled).map_err(|err| err.to_string())
+}
+
 /// The `daemon://` channel for each event variant.
 fn channel_of(event: &SupervisorEvent) -> &'static str {
     match event {
@@ -274,6 +284,7 @@ pub fn run() {
             daemon_restart,
             daemon_stop,
             open_plugins_window,
+            plugin_set_enabled,
             preflight_check,
             dsh_api_call
         ])

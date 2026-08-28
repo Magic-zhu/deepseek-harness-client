@@ -4,3 +4,4 @@
 //! imports, so it is unit-testable end to end.
 
 pub mod home;
+pub mod patch;
