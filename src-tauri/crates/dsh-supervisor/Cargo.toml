@@ -1,0 +1,20 @@
+[package]
+name = "dsh-supervisor"
+version = "0.1.0"
+edition = "2021"
+description = "Process supervision for the dsh web daemon: spawn, readiness by URL line, backoff restart, cascade kill."
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["io-util", "macros", "net", "process", "rt", "sync", "time"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
