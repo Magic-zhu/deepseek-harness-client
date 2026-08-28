@@ -530,3 +530,32 @@ footer {
   font-size: 13px;
   color: #f0b35e;
 }
+
+details summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--fg-dim);
+  margin: 6px 0;
+}
+
+.secrets h3 {
+  font-size: 13px;
+  margin: 12px 0 4px;
+}
+
+.secret-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+}
+
+.secret-row input {
+  flex: 1;
+  background: rgba(11, 16, 32, 0.9);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--fg);
+  padding: 5px 10px;
+  font-size: 12px;
+}

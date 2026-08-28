@@ -125,3 +125,29 @@ export interface PluginTaskView {
 export const installPlugin = (spec: string): Promise<string> => invoke('plugin_install', { spec })
 
 export const removePlugin = (spec: string): Promise<string> => invoke('plugin_remove', { spec })
+
+// ---- 设置（settings.*，静态方法不带 args 壳）----
+
+export interface SecretSlot {
+  path: string[]
+  set: boolean
+}
+
+export interface SettingsNamespaceView {
+  ns: string
+  schema: unknown
+  value: unknown
+  base?: unknown
+  user?: unknown
+  applies: 'live' | 'restart'
+  secrets: SecretSlot[]
+  revision: number
+}
+
+export interface SettingsDescription {
+  writable: boolean
+  hasDocument: boolean
+  namespaces: SettingsNamespaceView[]
+}
+
+export const describeSettings = (): Promise<SettingsDescription> => apiCall('settings.describe', {})

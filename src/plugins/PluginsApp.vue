@@ -8,6 +8,7 @@ import InventoryList from './InventoryList.vue'
 import DynamicList from './DynamicList.vue'
 import InstallDialog from './InstallDialog.vue'
 import TaskCenter from './TaskCenter.vue'
+import SettingsPanel from './SettingsPanel.vue'
 import { fetchDynamicInventory, fetchInventory, setPluginEnabled, usePolling } from './plugins'
 import type { DynamicPluginRow, PendingIntent, PluginEntry } from './plugins'
 
@@ -156,6 +157,7 @@ usePolling(loadInventories)
         <InventoryList v-if="tab === 'inventory'" :entries="entries" :pending="pending" @toggle="onToggle" />
         <DynamicList v-else-if="tab === 'dynamic'" :rows="dynamicRows" />
         <TaskCenter v-else-if="tab === 'tasks'" @notice="showNotice" />
+        <SettingsPanel v-else-if="tab === 'settings'" />
         <p v-else class="waiting">（后续切片交付此面板）</p>
       </template>
     </section>
