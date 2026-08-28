@@ -5,7 +5,7 @@ description = "DeepSeek Harness desktop client (Tauri shell)"
 edition = "2021"
 
 [workspace]
-members = ["crates/dsh-supervisor", "crates/dsh-bridge"]
+members = ["crates/dsh-supervisor", "crates/dsh-bridge", "crates/dsh-profile"]
 resolver = "2"
 
 [lib]
@@ -17,6 +17,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 dsh-bridge = { path = "crates/dsh-bridge" }
+dsh-profile = { path = "crates/dsh-profile" }
 dsh-supervisor = { path = "crates/dsh-supervisor" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

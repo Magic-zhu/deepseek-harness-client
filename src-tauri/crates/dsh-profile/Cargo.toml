@@ -1,0 +1,14 @@
+[package]
+name = "dsh-profile"
+version = "0.1.0"
+edition = "2021"
+description = "dsh profile seams: home resolution, cordis.patch.yml managed lines, dsh plugin CLI serial task runner."
+
+[dependencies]
+dsh-supervisor = { path = "../dsh-supervisor" }
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["io-util", "macros", "process", "rt", "sync", "time"] }
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
