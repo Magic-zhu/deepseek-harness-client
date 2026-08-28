@@ -439,3 +439,25 @@ footer {
   white-space: pre-wrap;
   word-break: break-all;
 }
+
+.switch {
+  min-width: 56px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--fg-dim);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.switch.on {
+  color: #6fd38c;
+  border-color: #2c5f3d;
+  background: rgba(111, 211, 140, 0.08);
+}
+
+.switch:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}

@@ -1,7 +1,12 @@
 <script setup lang="ts">
-import type { PluginEntry } from './plugins'
+import type { PendingIntent, PluginEntry } from './plugins'
 
-defineProps<{ entries: PluginEntry[] }>()
+const props = defineProps<{
+  entries: PluginEntry[]
+  pending: Record<string, PendingIntent>
+}>()
+
+const emit = defineEmits<{ toggle: [entry: PluginEntry] }>()
 
 function phaseLabel(entry: PluginEntry): string {
   switch (entry.fiberPhase) {
@@ -18,6 +23,10 @@ function phaseLabel(entry: PluginEntry): string {
     case null:
       return '未加载'
   }
+}
+
+function isPending(entry: PluginEntry): boolean {
+  return props.pending[entry.entryId] !== undefined
 }
 </script>
 
@@ -38,7 +47,16 @@ function phaseLabel(entry: PluginEntry): string {
           <td class="mono">{{ entry.entryId }}</td>
           <td class="mono dim">{{ entry.moduleName }}</td>
           <td><span class="phase" :data-phase="entry.fiberPhase ?? 'none'">{{ phaseLabel(entry) }}</span></td>
-          <td><span :class="['badge', entry.enabled ? 'on' : 'off']">{{ entry.enabled ? '启用' : '禁用' }}</span></td>
+          <td>
+            <button
+              :class="['switch', { on: entry.enabled }]"
+              :disabled="isPending(entry)"
+              :title="isPending(entry) ? '等待生效…' : entry.enabled ? '点击禁用' : '点击启用'"
+              @click="emit('toggle', entry)"
+            >
+              {{ isPending(entry) ? '…' : entry.enabled ? '启用' : '禁用' }}
+            </button>
+          </td>
         </tr>
       </tbody>
     </table>

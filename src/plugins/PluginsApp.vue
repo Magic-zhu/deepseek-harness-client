@@ -6,8 +6,8 @@ import { DAEMON_CHANNELS, fetchStatus } from '../daemon'
 import type { DaemonEvent, DaemonStatus } from '../daemon'
 import InventoryList from './InventoryList.vue'
 import DynamicList from './DynamicList.vue'
-import { fetchDynamicInventory, fetchInventory, usePolling } from './plugins'
-import type { DynamicPluginRow, PluginEntry } from './plugins'
+import { fetchDynamicInventory, fetchInventory, setPluginEnabled, usePolling } from './plugins'
+import type { DynamicPluginRow, PendingIntent, PluginEntry } from './plugins'
 
 /** 顶部 daemon 状态条：本窗口的一切数据都依赖 daemon 就绪。 */
 const status = ref<DaemonStatus | null>(null)
@@ -62,10 +62,50 @@ const entries = ref<PluginEntry[]>([])
 const dynamicRows = ref<DynamicPluginRow[]>([])
 const loadError = ref<string | null>(null)
 
+const pending = ref<Record<string, PendingIntent>>({})
+const notice = ref<string | null>(null)
+let noticeTimer: number | undefined
+
+function showNotice(text: string): void {
+  notice.value = text
+  window.clearTimeout(noticeTimer)
+  noticeTimer = window.setTimeout(() => {
+    notice.value = null
+  }, 6000)
+}
+
+async function onToggle(entry: PluginEntry): Promise<void> {
+  const intent = !entry.enabled
+  try {
+    await setPluginEnabled(entry.entryId, intent)
+    pending.value = { ...pending.value, [entry.entryId]: { intent, deadline: Date.now() + 10_000 } }
+  } catch (err) {
+    showNotice(`写入开关失败：${String(err)}`)
+  }
+}
+
+/** 每轮轮询后核对未决意图：生效即清除；10s 未生效提示 HMR 可能未应用。 */
+function settlePending(): void {
+  if (!Object.keys(pending.value).length) return
+  const now = Date.now()
+  const next = { ...pending.value }
+  for (const [entryId, p] of Object.entries(next)) {
+    const current = entries.value.find((e) => e.entryId === entryId)
+    if (current && current.enabled === p.intent) {
+      delete next[entryId]
+    } else if (now > p.deadline) {
+      delete next[entryId]
+      showNotice(`插件 ${entryId} 的开关未在 10 秒内生效（HMR 可能未应用），可尝试重启 daemon`)
+    }
+  }
+  pending.value = next
+}
+
 async function loadInventories(): Promise<void> {
   try {
     const snap = await fetchInventory()
     entries.value = snap.entries
+    settlePending()
     loadError.value = null
   } catch (err) {
     loadError.value = String(err)
@@ -86,6 +126,7 @@ usePolling(loadInventories)
       <h1>插件管理</h1>
       <span class="daemon-state" :data-ready="daemonReady">{{ statusText }}</span>
     </header>
+    <p v-if="notice" class="notice">{{ notice }}</p>
     <nav class="tabs">
       <button
         v-for="[key, label] in tabs"
@@ -100,7 +141,7 @@ usePolling(loadInventories)
       <p v-if="!daemonReady" class="waiting">等待 daemon 就绪后可加载数据。</p>
       <template v-else>
         <p v-if="loadError" class="error">{{ loadError }}</p>
-        <InventoryList v-if="tab === 'inventory'" :entries="entries" />
+        <InventoryList v-if="tab === 'inventory'" :entries="entries" :pending="pending" @toggle="onToggle" />
         <DynamicList v-else-if="tab === 'dynamic'" :rows="dynamicRows" />
         <p v-else class="waiting">（后续切片交付此面板）</p>
       </template>

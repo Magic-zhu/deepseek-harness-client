@@ -99,3 +99,14 @@ export function usePolling(loader: () => Promise<unknown>, intervalMs = 3000): v
     document.removeEventListener('visibilitychange', onVisible)
   })
 }
+
+// ---- 启用/禁用（patch 托管行）----
+
+export interface PendingIntent {
+  intent: boolean
+  deadline: number
+}
+
+/** enabled 是 UI 语义；patch 层写的是 disabled 标志，取反。 */
+export const setPluginEnabled = (entryId: string, enabled: boolean): Promise<void> =>
+  invoke('plugin_set_enabled', { entryId, disabled: !enabled })
