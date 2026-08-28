@@ -151,3 +151,11 @@ export interface SettingsDescription {
 }
 
 export const describeSettings = (): Promise<SettingsDescription> => apiCall('settings.describe', {})
+
+export const updateSettings = (ns: string, patch: unknown, expectedRevision?: number): Promise<unknown> =>
+  apiCall('settings.update', { ns, patch, expectedRevision })
+
+export type SettingsOp = { op: 'set'; path: string[]; value: unknown } | { op: 'unset'; path: string[] }
+
+export const mutateSettings = (ns: string, ops: SettingsOp[], expectedRevision?: number): Promise<unknown> =>
+  apiCall('settings.mutate', { ns, ops, expectedRevision })
