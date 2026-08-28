@@ -39,7 +39,7 @@ async function submit(): Promise<void> {
       <p v-else class="hint">输入要移除的包名（与安装时一致）。移除后需重启 daemon 生效。</p>
       <input
         v-model="spec"
-        :placeholder="mode === 'install' ? 'npm 包 spec，如 @scope/name@^1.0.0 或 github:user/repo' : '包名，如 @scope/name'"
+        :placeholder="mode === 'install' ? 'npm 包 spec，如 @scope/name@1.0.0 或 github:user/repo（版本请写确切值，暂不支持 ^ 范围）' : '包名，如 @scope/name'"
         :disabled="busy"
         @keydown.enter="submit"
       />

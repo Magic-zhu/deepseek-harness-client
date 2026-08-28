@@ -78,7 +78,8 @@ async function save(ns: SettingsNamespaceView): Promise<void> {
     if (isConflict(err)) {
       await reload()
       delete edits.value[ns.ns]
-      editOf(ns).error = '设置已被他处修改，已载入最新值，请核对后重新保存'
+      const fresh = namespaces.value.find((n) => n.ns === ns.ns) ?? ns
+      editOf(fresh).error = '设置已被他处修改，已载入最新值，请核对后重新保存'
     } else {
       edit.error = String(err)
     }

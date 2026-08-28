@@ -99,6 +99,13 @@ fn plugin_remove(state: tauri::State<'_, PluginTasksState>, spec: String) -> Res
     state.runner.submit(PluginTaskKind::Remove, spec)
 }
 
+/// Snapshot of queued/finished plugin tasks so a (re)mounted task center can
+/// catch up without waiting for the next state-change event.
+#[tauri::command]
+fn plugin_tasks_list(state: tauri::State<'_, PluginTasksState>) -> Result<Vec<dsh_profile::tasks::PluginTaskView>, String> {
+    Ok(state.runner.list())
+}
+
 /// Show and focus the plugin management window (declared hidden at startup
 /// in tauri.conf.json, so it is already loaded and subscribed).
 #[tauri::command]
@@ -328,6 +335,7 @@ pub fn run() {
             open_plugins_window,
             plugin_install,
             plugin_remove,
+            plugin_tasks_list,
             plugin_set_enabled,
             preflight_check,
             dsh_api_call

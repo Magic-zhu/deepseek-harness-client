@@ -126,6 +126,8 @@ export const installPlugin = (spec: string): Promise<string> => invoke('plugin_i
 
 export const removePlugin = (spec: string): Promise<string> => invoke('plugin_remove', { spec })
 
+export const fetchPluginTasks = (): Promise<PluginTaskView[]> => invoke('plugin_tasks_list')
+
 // ---- 设置（settings.*，静态方法不带 args 壳）----
 
 export interface SecretSlot {

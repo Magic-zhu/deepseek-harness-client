@@ -3,17 +3,19 @@ import { onMounted, onUnmounted, ref } from 'vue'
 import { listen } from '@tauri-apps/api/event'
 import type { UnlistenFn } from '@tauri-apps/api/event'
 import { restartDaemon } from '../daemon'
+import { fetchPluginTasks } from './plugins'
 import type { PluginTaskView } from './plugins'
 
 const emit = defineEmits<{ notice: [text: string] }>()
 
-// 注意：任务状态只在内存里（窗口常驻不销毁；webview 被手动刷新时任务视图会从零开始，
-// daemon 侧任务仍会继续跑完——可接受的已知边界，spec §9 同级）。
+// 任务状态常驻后端内存：组件（重新）挂载时先拉快照补全历史，再订阅增量事件。
 const tasks = ref<PluginTaskView[]>([])
 const restarting = ref(false)
 let unlisten: UnlistenFn | undefined
 
 onMounted(async () => {
+  const seeded = await fetchPluginTasks().catch(() => [])
+  tasks.value = seeded
   unlisten = await listen<PluginTaskView>('plugins://task', (event) => {
     const view = event.payload
     const index = tasks.value.findIndex((t) => t.taskId === view.taskId)

@@ -151,15 +151,14 @@ usePolling(loadInventories)
       </button>
     </nav>
     <section class="panel">
-      <p v-if="!daemonReady" class="waiting">等待 daemon 就绪后可加载数据。</p>
-      <template v-else>
+      <TaskCenter v-if="tab === 'tasks'" @notice="showNotice" />
+      <template v-else-if="daemonReady">
         <p v-if="loadError" class="error">{{ loadError }}</p>
         <InventoryList v-if="tab === 'inventory'" :entries="entries" :pending="pending" @toggle="onToggle" />
         <DynamicList v-else-if="tab === 'dynamic'" :rows="dynamicRows" @refresh="loadInventories" @notice="showNotice" />
-        <TaskCenter v-else-if="tab === 'tasks'" @notice="showNotice" />
         <SettingsPanel v-else-if="tab === 'settings'" @notice="showNotice" />
-        <p v-else class="waiting">（后续切片交付此面板）</p>
       </template>
+      <p v-else class="waiting">等待 daemon 就绪后可加载数据。</p>
     </section>
     <InstallDialog v-if="dialog" :mode="dialog" @close="dialog = null" @submitted="onTaskSubmitted" />
   </main>
