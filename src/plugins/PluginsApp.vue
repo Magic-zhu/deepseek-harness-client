@@ -155,7 +155,7 @@ usePolling(loadInventories)
       <template v-else>
         <p v-if="loadError" class="error">{{ loadError }}</p>
         <InventoryList v-if="tab === 'inventory'" :entries="entries" :pending="pending" @toggle="onToggle" />
-        <DynamicList v-else-if="tab === 'dynamic'" :rows="dynamicRows" />
+        <DynamicList v-else-if="tab === 'dynamic'" :rows="dynamicRows" @refresh="loadInventories" @notice="showNotice" />
         <TaskCenter v-else-if="tab === 'tasks'" @notice="showNotice" />
         <SettingsPanel v-else-if="tab === 'settings'" @notice="showNotice" />
         <p v-else class="waiting">（后续切片交付此面板）</p>

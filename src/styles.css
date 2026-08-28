@@ -578,3 +578,9 @@ details summary {
   padding: 8px 10px;
   resize: vertical;
 }
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}

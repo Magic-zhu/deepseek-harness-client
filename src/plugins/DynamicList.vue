@@ -1,7 +1,18 @@
 <script setup lang="ts">
+import { ref } from 'vue'
+import { stopDynamicPlugin, undefineDynamicPlugin } from './plugins'
 import type { DynamicPluginRow } from './plugins'
 
 defineProps<{ rows: DynamicPluginRow[] }>()
+
+const emit = defineEmits<{
+  refresh: []
+  notice: [text: string]
+}>()
+
+/** 一次只允许一个操作；删除用两段式按钮代替原生 confirm（webview 里不可靠）。 */
+const acting = ref<string | null>(null)
+const confirming = ref<string | null>(null)
 
 /** 当前生效包（运行中的包优先，其次 last-success，再其次最新版本）。 */
 function currentPackage(row: DynamicPluginRow) {
@@ -51,6 +62,40 @@ function runStatusLabel(row: DynamicPluginRow): string {
       return '未运行'
   }
 }
+
+async function stop(row: DynamicPluginRow): Promise<void> {
+  acting.value = row.pluginId
+  try {
+    const receipt = await stopDynamicPlugin(row.agentId, row.pluginId)
+    emit('notice', receipt.ok ? '已停止' : `停止失败：${receipt.message ?? receipt.reason}`)
+    emit('refresh')
+  } catch (err) {
+    emit('notice', `停止失败：${String(err)}`)
+  } finally {
+    acting.value = null
+  }
+}
+
+async function undefine(row: DynamicPluginRow): Promise<void> {
+  acting.value = row.pluginId
+  confirming.value = null
+  try {
+    const receipt = await undefineDynamicPlugin(row.agentId, row.pluginId)
+    emit(
+      'notice',
+      receipt.ok
+        ? receipt.wasRunning
+          ? '已删除（其运行实例已一并停止）'
+          : '已删除'
+        : `删除失败：${receipt.message ?? receipt.reason}`,
+    )
+    emit('refresh')
+  } catch (err) {
+    emit('notice', `删除失败：${String(err)}`)
+  } finally {
+    acting.value = null
+  }
+}
 </script>
 
 <template>
@@ -81,6 +126,23 @@ function runStatusLabel(row: DynamicPluginRow): string {
         <dd>{{ halfLabel(row.latestRun?.client.status) }}</dd>
       </dl>
       <pre v-if="row.latestRun?.error" class="error-detail">{{ row.latestRun.error.phase }}: {{ row.latestRun.error.message }}</pre>
+      <footer class="actions">
+        <button
+          v-if="row.activeRun"
+          class="mini"
+          :disabled="acting !== null"
+          @click="stop(row)"
+        >
+          {{ acting === row.pluginId ? '操作中…' : '停止' }}
+        </button>
+        <template v-if="confirming !== row.pluginId">
+          <button class="mini danger" :disabled="acting !== null" @click="confirming = row.pluginId">删除</button>
+        </template>
+        <template v-else>
+          <button class="mini danger" :disabled="acting !== null" @click="undefine(row)">确认删除（不可恢复）</button>
+          <button class="mini" @click="confirming = null">取消</button>
+        </template>
+      </footer>
     </article>
   </div>
 </template>

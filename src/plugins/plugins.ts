@@ -159,3 +159,17 @@ export type SettingsOp = { op: 'set'; path: string[]; value: unknown } | { op: '
 
 export const mutateSettings = (ns: string, ops: SettingsOp[], expectedRevision?: number): Promise<unknown> =>
   apiCall('settings.mutate', { ns, ops, expectedRevision })
+
+// ---- 动态插件操作（回执是 value 而非信封错误，前端自行判 ok）----
+
+export type DynamicStopReceipt = { ok: true } | { ok: false; reason: string; message?: string }
+
+export const stopDynamicPlugin = (agentId: string, pluginId: string): Promise<DynamicStopReceipt> =>
+  apiCall('dynamicCordisRunner/stopFromPanel', { agentId, pluginId })
+
+export type DynamicUndefineReceipt =
+  | { ok: true; wasRunning: boolean }
+  | { ok: false; reason: string; message?: string }
+
+export const undefineDynamicPlugin = (agentId: string, pluginId: string): Promise<DynamicUndefineReceipt> =>
+  apiCall('dynamicCordisRunner/undefineFromPanel', { agentId, pluginId })
