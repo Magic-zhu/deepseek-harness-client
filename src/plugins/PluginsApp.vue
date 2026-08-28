@@ -4,6 +4,10 @@ import { listen } from '@tauri-apps/api/event'
 import type { UnlistenFn } from '@tauri-apps/api/event'
 import { DAEMON_CHANNELS, fetchStatus } from '../daemon'
 import type { DaemonEvent, DaemonStatus } from '../daemon'
+import InventoryList from './InventoryList.vue'
+import DynamicList from './DynamicList.vue'
+import { fetchDynamicInventory, fetchInventory, usePolling } from './plugins'
+import type { DynamicPluginRow, PluginEntry } from './plugins'
 
 /** 顶部 daemon 状态条：本窗口的一切数据都依赖 daemon 就绪。 */
 const status = ref<DaemonStatus | null>(null)
@@ -53,6 +57,27 @@ const tabs: Array<[Tab, string]> = [
   ['settings', '设置'],
   ['tasks', '任务'],
 ]
+
+const entries = ref<PluginEntry[]>([])
+const dynamicRows = ref<DynamicPluginRow[]>([])
+const loadError = ref<string | null>(null)
+
+async function loadInventories(): Promise<void> {
+  try {
+    const snap = await fetchInventory()
+    entries.value = snap.entries
+    loadError.value = null
+  } catch (err) {
+    loadError.value = String(err)
+  }
+  try {
+    dynamicRows.value = await fetchDynamicInventory()
+  } catch {
+    /* 动态清单失败保留旧数据；主错误条已提示 */
+  }
+}
+
+usePolling(loadInventories)
 </script>
 
 <template>
@@ -73,7 +98,12 @@ const tabs: Array<[Tab, string]> = [
     </nav>
     <section class="panel">
       <p v-if="!daemonReady" class="waiting">等待 daemon 就绪后可加载数据。</p>
-      <p v-else class="waiting">（后续切片交付此面板）</p>
+      <template v-else>
+        <p v-if="loadError" class="error">{{ loadError }}</p>
+        <InventoryList v-if="tab === 'inventory'" :entries="entries" />
+        <DynamicList v-else-if="tab === 'dynamic'" :rows="dynamicRows" />
+        <p v-else class="waiting">（后续切片交付此面板）</p>
+      </template>
     </section>
   </main>
 </template>
