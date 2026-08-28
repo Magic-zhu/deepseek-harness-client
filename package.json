@@ -1,0 +1,24 @@
+{
+  "name": "deepseek-harness-client",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "icon": "node scripts/make-icon.mjs && tauri icon src-assets/icon.png"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.9.0",
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.9.0",
+    "@vitejs/plugin-vue": "^5.2.0",
+    "typescript": "~5.8.0",
+    "vite": "^6.3.0",
+    "vue-tsc": "^2.2.0"
+  }
+}

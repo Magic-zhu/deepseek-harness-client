@@ -2258,7 +2258,7 @@ mod tests {
         for bad in ["", " a", "a ", "a b", "a&calc", "a|b", "a>b", "a\"b", "a^b", "a\nb"] {
             assert!(validate_spec(bad).is_err(), "应拒绝 {bad:?}");
         }
-        assert!(validate_spec("@scope/name@^1.2.3").is_ok());
+        assert!(validate_spec("@scope/name@1.2.3").is_ok()); // 注意：caret range（@^1.2.3）不可用——cmd /c 会吃掉 ^，validate_spec 拒绝它是保护而非限制
         assert!(validate_spec("github:user/repo").is_ok());
     }
 
