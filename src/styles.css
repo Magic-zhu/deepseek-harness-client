@@ -212,12 +212,39 @@ footer {
 }
 
 /* ---- 插件管理窗口（.plugins 作用域内，不影响 splash） ---- */
+/* 设计家族对齐 dsh web `ui-theme` / `ui-settings-plugins` / `ui-commands`:
+   中性近黑 + 极弱 bluish 饱和、12px 卡片、1px hairline 边、shadow-lv3
+   抬升、极淡 hover overlay（rgba 255,255,255,.08）。
+   变量就近在 .plugins / .palette 作用域下重声明,避免污染 .splash
+   的品牌渐变(它仍走 :root 里的 --bg / --bg-soft)。 */
+.plugins,
+.palette {
+  --bg:            #1B1B1C;
+  --bg-soft:       #1B1B1C;
+  --fg:            #f2f2f4;
+  --fg-dim:        #9aa0a6;
+  --fg-dimmer:     #6c7077;
+  --border:        rgba(255, 255, 255, 0.12);
+  --border-strong: rgba(255, 255, 255, 0.20);
+  --hover:         rgba(255, 255, 255, 0.08);
+  --accent-fg:     #f2f2f4;     /* 主按钮底色(label-primary) */
+  --danger:        #f25a5a;
+  --warn:          #d4a13a;
+  --ok:            #6fd38c;
+  --shadow-lv3:    0 8px 24px rgba(0, 0, 0, 0.40), 0 1px 2px rgba(0, 0, 0, 0.30);
+}
 
 .plugins {
   min-height: 100vh;
-  padding: 20px 24px 40px;
-  max-width: 980px;
-  margin: 0 auto;
+  padding: 24px 28px 40px;
+  /* 占满整个 webview,不再 760 居中。原先抄 dsh 的 760 是给"设置里
+     的一段"用的,这里整个窗口就是插件管理,应该顶到边。 */
+  margin: 0;
+  color: var(--fg);
+  /* 整页底色:#1B1B1C。.plugins 是 <main>,没自带 background 会透到
+     body 那个 :root 渐变(深蓝紫),所以这里强制实心,跟 .palette-card
+     的 --bg-soft 同色,两窗口底色一致。 */
+  background: var(--bg-soft);
 }
 
 .plugins .bar {
@@ -228,7 +255,8 @@ footer {
 }
 
 .plugins .bar h1 {
-  font-size: 20px;
+  font-size: 18px;              /* dsh heading 18/600 */
+  font-weight: 600;
   margin: 0;
 }
 
@@ -243,35 +271,53 @@ footer {
 }
 
 .plugins .daemon-state[data-ready='true'] {
-  color: #6fd38c;
+  color: var(--ok);
 }
 
+/* 标签条:dsh 是 1px border-l2 下边线 + tab 间距 22 + 2px 底杠 */
 .plugins .tabs {
   display: flex;
-  gap: 4px;
-  margin: 16px 0 12px;
+  align-items: flex-end;
+  gap: 22px;
   border-bottom: 1px solid var(--border);
+  margin: 16px 0 12px;
 }
 
 .plugins .tab {
-  background: none;
-  border: none;
+  position: relative;
+  background: transparent;
+  border: 0;
+  padding: 7px 0 9px;
   color: var(--fg-dim);
-  padding: 8px 14px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
   cursor: pointer;
-  font-size: 14px;
-  border-bottom: 2px solid transparent;
+}
+
+.plugins .tab:hover {
+  color: var(--fg);
 }
 
 .plugins .tab.active {
   color: var(--fg);
-  border-bottom-color: var(--accent);
+}
+
+.plugins .tab.active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--fg);
 }
 
 .plugins .notice {
   margin: 8px 0;
   padding: 8px 12px;
-  border: 1px solid var(--accent);
+  border: 1px solid var(--border);
   border-radius: 8px;
   font-size: 13px;
 }
@@ -299,22 +345,29 @@ footer {
   color: var(--fg-dim);
 }
 
+/* 徽章:dsh pending 1/8 padding / 999 radius / 11px */
 .plugins .badge {
-  padding: 2px 8px;
+  padding: 1px 8px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 11px;
+  line-height: 17px;
+  font-weight: 500;
+  white-space: nowrap;
   border: 1px solid var(--border);
+  color: var(--fg-dim);
 }
 
 .plugins .badge.on {
-  color: #6fd38c;
-  border-color: #2c5f3d;
+  color: var(--ok);
+  border-color: rgba(111, 211, 140, 0.35);
+  background: rgba(111, 211, 140, 0.08);
 }
 
 .plugins .badge.off {
   color: var(--fg-dim);
 }
 
+/* 状态文字:沿用 dsh 灰主+绿/红 accent */
 .plugins .phase {
   font-size: 12px;
   color: var(--fg-dim);
@@ -325,33 +378,49 @@ footer {
 }
 
 .plugins .phase[data-phase='active'] {
-  color: #6fd38c;
+  color: var(--ok);
 }
 
+/* 按钮:dsh 5/14 padding / 8 radius / 主按钮 = label-primary 底 */
 .plugins .mini {
-  background: rgba(77, 107, 254, 0.12);
+  background: transparent;
   color: var(--fg);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 4px 12px;
-  font-size: 12px;
+  padding: 5px 14px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
   cursor: pointer;
 }
 
-.plugins .mini:disabled {
-  opacity: 0.5;
-  cursor: default;
+.plugins .mini:hover:not(:disabled) {
+  border-color: var(--border-strong);
 }
 
 .plugins .mini.primary {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--accent-fg);
+  color: var(--bg-soft);
+  border-color: var(--accent-fg);
+}
+
+.plugins .mini.primary:hover:not(:disabled) {
+  filter: brightness(0.92);
 }
 
 .plugins .mini.danger {
   border-color: var(--danger);
   color: var(--danger);
-  background: none;
+  background: transparent;
+}
+
+.plugins .mini.danger:hover:not(:disabled) {
+  background: rgba(242, 90, 90, 0.08);
+}
+
+.plugins .mini:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .plugins-entry {
@@ -367,9 +436,10 @@ footer {
 
 .plugins-entry:hover {
   color: var(--fg);
-  border-color: var(--accent);
+  border-color: var(--border-strong);
 }
 
+/* 清单表(InventoryList) */
 .plugins .table {
   width: 100%;
   border-collapse: collapse;
@@ -389,71 +459,215 @@ footer {
   font-size: 12px;
 }
 
+/* 通用卡片:dsh 12px 圆角 + 1px hairline + 0 padding(header/footer 自带) */
 .plugins .dyn-card,
 .plugins .ns-card,
 .plugins .task-card {
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 12px 16px;
+  background: var(--bg-soft);
+  padding: 0;
   margin-bottom: 10px;
-  background: rgba(16, 26, 58, 0.5);
+  transition: border-color 0.16s, background 0.16s;
 }
 
+.plugins .dyn-card:hover,
+.plugins .ns-card:hover,
+.plugins .task-card:hover {
+  border-color: var(--border-strong);
+}
+
+/* header 段:14/16 padding,gap 12,名字 15/600,状态用 phase */
 .plugins .dyn-card header,
 .plugins .ns-card header,
 .plugins .task-card header {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
+  padding: 14px 16px;
 }
 
-.plugins .kv {
+.plugins .dyn-card header strong,
+.plugins .ns-card header strong,
+.plugins .task-card header strong {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.plugins .dyn-card header code.mono,
+.plugins .ns-card header code.mono,
+.plugins .task-card header code.mono {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--fg);
+  word-break: break-all;
+}
+
+/* body 段:hairline 顶边线 + 0 16 margin */
+.plugins .dyn-card > p.dim,
+.plugins .dyn-card > dl.kv,
+.plugins .dyn-card > pre.error-detail,
+.plugins .ns-card > details,
+.plugins .ns-card > div.editor,
+.plugins .ns-card > div.secrets,
+.plugins .task-card > pre.task-out {
+  border-top: 1px solid var(--border);
+  margin: 0 16px;
+  padding: 10px 0 8px;
+}
+
+.plugins .dyn-card > p.dim {
+  color: var(--fg-dim);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.plugins .dyn-card > dl.kv {
   display: grid;
   grid-template-columns: 88px 1fr;
   gap: 4px 10px;
   font-size: 12px;
-  margin: 8px 0;
 }
 
-.plugins .kv dt {
+.plugins .dyn-card > dl.kv dt {
   color: var(--fg-dim);
 }
 
-.plugins .kv dd {
+.plugins .dyn-card > dl.kv dd {
   margin: 0;
+  color: var(--fg);
 }
 
-.plugins .error-detail {
-  color: var(--danger);
+/* footer 段:hairline 顶边线 + 0 16 margin + 右对齐 gap 8 */
+.plugins .dyn-card > footer.actions,
+.plugins .task-card > footer.done-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  margin: 0 16px;
+  padding: 12px 0 10px;
 }
 
+.plugins .dyn-card > footer.actions {
+  justify-content: flex-end;
+}
+
+.plugins .task-card > footer.done-banner {
+  color: var(--warn);
+  font-size: 13px;
+  justify-content: space-between;
+}
+
+/* 错误 / JSON / 输出框:dsh 风格实心底 + 1px 边 */
 .plugins .error-detail,
 .plugins .json,
 .plugins .task-out {
-  background: rgba(4, 8, 20, 0.7);
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 8px 10px;
   font-size: 12px;
+  color: var(--fg-dim);
   overflow: auto;
   max-height: 220px;
   white-space: pre-wrap;
   word-break: break-all;
 }
 
+.plugins .error-detail {
+  color: var(--danger);
+}
+
+/* settings 卡片里 details / secrets / editor 段 */
+.plugins details summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--fg-dim);
+  padding: 0;
+}
+
+.plugins details[open] summary {
+  color: var(--fg);
+}
+
+.plugins .secrets h3 {
+  font-size: 13px;
+  margin: 12px 0 4px;
+  color: var(--fg);
+}
+
+.plugins .secret-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+}
+
+.plugins .secret-row input {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--fg);
+  padding: 5px 10px;
+  font-size: 12px;
+  outline: none;
+}
+
+.plugins .secret-row input:focus {
+  border-color: var(--border-strong);
+}
+
+.plugins .editor label {
+  display: block;
+  font-size: 12px;
+  color: var(--fg-dim);
+  margin: 10px 0 4px;
+}
+
+.plugins .editor textarea {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--fg);
+  font-family: 'Cascadia Code', Consolas, monospace;
+  font-size: 12px;
+  padding: 8px 10px;
+  resize: vertical;
+  outline: none;
+}
+
+.plugins .editor textarea:focus {
+  border-color: var(--border-strong);
+}
+
+.plugins .actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* 开关(InventoryList 列) */
 .plugins .switch {
   min-width: 56px;
   padding: 3px 10px;
   border-radius: 999px;
   border: 1px solid var(--border);
-  background: none;
+  background: transparent;
   color: var(--fg-dim);
   font-size: 12px;
   cursor: pointer;
 }
 
 .plugins .switch.on {
-  color: #6fd38c;
-  border-color: #2c5f3d;
+  color: var(--ok);
+  border-color: rgba(111, 211, 140, 0.35);
   background: rgba(111, 211, 140, 0.08);
 }
 
@@ -462,10 +676,11 @@ footer {
   cursor: wait;
 }
 
+/* 弹窗:dsh 12 + l2 边 + shadow-lv3 */
 .plugins .dialog-mask {
   position: fixed;
   inset: 0;
-  background: rgba(4, 8, 20, 0.6);
+  background: rgba(0, 0, 0, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -476,27 +691,34 @@ footer {
   width: min(460px, 90vw);
   background: var(--bg-soft);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 12px;
   padding: 20px;
+  box-shadow: var(--shadow-lv3);
 }
 
 .plugins .dialog h2 {
   margin: 0 0 8px;
   font-size: 16px;
+  font-weight: 600;
 }
 
 .plugins .dialog input {
   width: 100%;
-  background: rgba(11, 16, 32, 0.9);
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--fg);
   padding: 8px 10px;
   font-size: 13px;
+  outline: none;
+}
+
+.plugins .dialog input:focus {
+  border-color: var(--border-strong);
 }
 
 .plugins .warn {
-  color: #f0b35e;
+  color: var(--warn);
   font-size: 13px;
 }
 
@@ -511,7 +733,7 @@ footer {
   width: 12px;
   height: 12px;
   border: 2px solid var(--border);
-  border-top-color: var(--accent);
+  border-top-color: var(--fg);
   border-radius: 50%;
   animation: plugins-spin 0.8s linear infinite;
 }
@@ -526,82 +748,46 @@ footer {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-top: 8px;
   font-size: 13px;
-  color: #f0b35e;
-}
-
-.plugins details summary {
-  cursor: pointer;
-  font-size: 12px;
-  color: var(--fg-dim);
-  margin: 6px 0;
-}
-
-.plugins .secrets h3 {
-  font-size: 13px;
-  margin: 12px 0 4px;
-}
-
-.plugins .secret-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 6px 0;
-}
-
-.plugins .secret-row input {
-  flex: 1;
-  background: rgba(11, 16, 32, 0.9);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--fg);
-  padding: 5px 10px;
-  font-size: 12px;
-}
-
-.plugins .editor label {
-  display: block;
-  font-size: 12px;
-  color: var(--fg-dim);
-  margin: 10px 0 4px;
-}
-
-.plugins .editor textarea {
-  width: 100%;
-  background: rgba(4, 8, 20, 0.7);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--fg);
-  font-family: 'Cascadia Code', Consolas, monospace;
-  font-size: 12px;
-  padding: 8px 10px;
-  resize: vertical;
-}
-
-.plugins .actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
+  color: var(--warn);
 }
 
 /* ---- command palette (palette window) ---- */
+/* 窗口开了 transparent:true,WebView2 才会让 alpha 透到桌面。但同一个
+   styles.css 还被主窗口/splash 复用,那里的 body 画了深色渐变
+   (linear-gradient(var(--bg) → var(--bg-soft))),会糊穿 .palette 的
+   透明直接盖到整张画布——所以 palette 窗口里要把 html/body 一起打透明。
+   :has() 让规则只匹配"页面里实际有 .palette 的窗口",主窗口的 body
+   渐变不会被波及 (WebView2 = Chromium 引擎,支持 :has)。 */
+html:has(.palette),
+body:has(.palette) {
+  background: transparent;
+}
+
+/* 设计家族对齐 dsh `PopupSelectView.module.css`(MenuDropdown r12 /
+   hairline / shadow-lv3):卡片实心中性灰底,1px hairline 边,12px 圆角,
+   shadow-lv3 抬升;内部 padding 4,行 padding 6/8,active 用极淡
+   rgba(255,255,255,.08) overlay。 */
 .palette {
-  min-height: 100vh;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 16px;
+  width: 100vw;
+  height: 100vh;
+  display: block;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
   background: transparent;
 }
 
 .palette .palette-card {
-  width: 100%;
-  background: rgba(13, 19, 42, 0.92);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
+  background: var(--bg-soft);
+  /* 整张窗口就是命令面板,不要圆角、不要 hairline,直接矩形实心卡;
+     shadow 保留——透明窗口下没有 shadow 会失去悬浮感。 */
+  box-shadow: var(--shadow-lv3);
 }
 
 .palette .input {
@@ -610,8 +796,8 @@ footer {
   border: 0;
   border-bottom: 1px solid var(--border);
   color: var(--fg);
-  font-size: 15px;
-  padding: 14px 16px;
+  font-size: 14px;
+  padding: 12px 14px;
   outline: none;
 }
 
@@ -622,40 +808,52 @@ footer {
 .palette .list {
   list-style: none;
   margin: 0;
-  padding: 6px 0;
-  max-height: calc(100vh - 80px);
+  padding: 0;
+  /* 卡片是 flex column、输入框是固定高度,这里 flex:1 + min-height:0
+     让列表自动占满剩余高度。比 calc(100vh - X) 健壮——窗口高度变了
+     不用重算。min-height:0 是 flex 子项允许收缩到比内容小的关键。
+     padding 0:面板直角,行紧贴边缘,active 整行满铺。 */
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
+  /* dsh 把滚动条重绑到 l2 抬升色;这里直接用 fg-dim 半透即可 */
+  scrollbar-color: var(--fg-dim) transparent;
 }
 
 .palette .item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 8px 16px;
+  gap: 8px;
+  padding: 6px 8px;
   cursor: pointer;
   color: var(--fg);
+  font-size: 13px;
 }
 
 .palette .item.active {
-  background: rgba(77, 107, 254, 0.18);
+  background: var(--hover);
 }
 
 .palette .item .title {
-  font-size: 13px;
-  flex-shrink: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .palette .item .meta {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   color: var(--fg-dim);
   font-size: 12px;
-  min-width: 0;
+  flex-shrink: 0;
 }
 
 .palette .item .hint {
+  max-width: 320px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -665,14 +863,14 @@ footer {
   font-family: 'Cascadia Code', Consolas, monospace;
   border: 1px solid var(--border);
   border-radius: 4px;
-  padding: 1px 6px;
+  padding: 0 6px;
   font-size: 11px;
   color: var(--fg);
   flex-shrink: 0;
 }
 
 .palette .empty {
-  padding: 16px;
+  padding: 12px;
   color: var(--fg-dim);
   font-size: 13px;
   text-align: center;

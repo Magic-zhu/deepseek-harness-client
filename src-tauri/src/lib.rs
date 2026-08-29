@@ -6,7 +6,8 @@ use dsh_supervisor::{self, LogStream, RestartPolicy, Supervisor, SupervisorEvent
 use serde::Serialize;
 use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager, Url, WebviewWindow};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, Url, WebviewWindow};
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use tracing::{debug, error, info, warn};
 
 /// Managed application state: the supervisor handle.
@@ -112,6 +113,16 @@ fn plugin_tasks_list(state: tauri::State<'_, PluginTasksState>) -> Result<Vec<ds
 /// in tauri.conf.json, so it is already loaded and subscribed).
 #[tauri::command]
 fn open_plugins_window(app: tauri::AppHandle) -> Result<(), String> {
+    // Hide the palette before showing the target: front-end `pick()` already
+    // awaits `close()` (which hides the palette), but on Windows the
+    // transparent + decoration-less palette window sometimes keeps a stale
+    // entry in z-order after `hide()` and the subsequent `set_focus` on
+    // the target re-focuses that stale entry. Doing the hide here in the
+    // same Rust function — synchronously, before the target's show+focus —
+    // guarantees the palette is gone before the focus swap happens.
+    if let Some(palette) = app.get_webview_window("palette") {
+        let _ = palette.hide();
+    }
     let window = app
         .get_webview_window("plugins")
         .ok_or_else(|| "插件窗口未创建（tauri.conf.json 缺少 plugins 声明）".to_string())?;
@@ -124,7 +135,22 @@ fn open_plugins_window(app: tauri::AppHandle) -> Result<(), String> {
 /// command palette has a uniform "open X" surface.
 #[tauri::command]
 fn show_main_window(app: tauri::AppHandle) -> Result<(), String> {
+    // Same race-dodge as `open_plugins_window`: hide the palette first so
+    // the focus swap to `main` can't re-surface a stale palette z-order
+    // entry on Windows.
+    if let Some(palette) = app.get_webview_window("palette") {
+        let _ = palette.hide();
+    }
     show_window(&app, "main")
+}
+
+/// Open the command palette window from inside a webview (e.g. the tray
+/// menu, or any future per-window shortcut). Mirrors the global-shortcut
+/// path: show + focus the palette, then emit `palette://open` so the
+/// palette window resets and focuses its input.
+#[tauri::command]
+fn open_palette_window(app: tauri::AppHandle) {
+    open_palette(&app);
 }
 
 /// Quit the whole application (used by the command palette). Goes through
@@ -230,9 +256,34 @@ fn show_window(app: &AppHandle, label: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Center `overlay` over the outer rect of `target` (both in physical
+/// pixels, so DPI-scaling is consistent). Used to make the command
+/// palette pop up in the middle of the main window on every open — the
+/// palette window is `hide()`-reused across opens, so its remembered
+/// position can drift, and `center: true` in tauri.conf.json only fires
+/// once at creation time. Falls back to the overlay's current position
+/// if either window can't be read, so a transient query failure never
+/// blocks the open path.
+fn center_over(target: &WebviewWindow, overlay: &WebviewWindow) {
+    let Ok(target_pos) = target.outer_position() else { return };
+    let Ok(target_size) = target.outer_size() else { return };
+    let Ok(overlay_size) = overlay.outer_size() else { return };
+    let x = target_pos.x + (target_size.width as i32 - overlay_size.width as i32) / 2;
+    let y = target_pos.y + (target_size.height as i32 - overlay_size.height as i32) / 2;
+    let _ = overlay.set_position(PhysicalPosition::new(x, y));
+}
+
 /// Open the command palette window and ping it to reset/clear state.
 /// Used by the tray-icon click and the global shortcut.
 fn open_palette(app: &AppHandle) {
+    // Recenter on every open so the palette always pops up in the middle
+    // of the main window — regardless of where the user last moved it.
+    if let (Some(palette), Some(main)) = (
+        app.get_webview_window("palette"),
+        app.get_webview_window("main"),
+    ) {
+        center_over(&main, &palette);
+    }
     if show_window(app, "palette").is_ok() {
         let _ = app.emit("palette://open", ());
     }
@@ -303,14 +354,7 @@ pub fn run() {
     init_tracing();
 
     let app = tauri::Builder::default()
-        .on_page_load(|webview, _payload| {
-            // 全局 page-load 钩子：过滤到主窗口，重新注入快捷键监听器。
-            // 注入脚本自身通过 `__dsh_palette_listener_installed` 做了幂等，
-            // 所以每次 page-load 都调用 install_palette_shortcut 也是安全的。
-            if webview.label() == "main" {
-                install_palette_shortcut_on_webview(webview);
-            }
-        })
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             let bin_override = std::env::var("DSH_CLIENT_BIN").ok();
             let launch = dsh_supervisor::resolve_launch(bin_override.as_deref());
@@ -373,11 +417,8 @@ pub fn run() {
 
             install_tray(app).map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })?;
 
-            // 给 splash（首屏）注入一次快捷键监听；守护进程就绪后
-            // 主窗口 navigate 到 dsh 时由 Builder.on_page_load 回调重新注入。
-            if let Some(main) = app.get_webview_window("main") {
-                install_palette_shortcut_on_webview(main.as_ref());
-            }
+            install_palette_global_shortcut(app)?;
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -387,6 +428,7 @@ pub fn run() {
             daemon_stop,
             open_plugins_window,
             show_main_window,
+            open_palette_window,
             app_quit,
             plugin_install,
             plugin_remove,
@@ -500,42 +542,24 @@ fn install_tray(app: &tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
-/// 注入到主窗口 webview 的 keydown 监听器脚本。
-/// 命中 `Ctrl+Shift+P` 时阻止默认行为并调用 `open_plugins_window`。
-/// 与系统级全局快捷键不同，监听器只在该 webview 拿到焦点时生效，
-/// 不会和 VS Code / PowerToys 等进程抢键。
-///
-/// 注意：必须用 `__TAURI_INTERNALS__.invoke` 而不是 `__TAURI__.core.invoke`。
-/// 前者是 Tauri 2 webview 始终注入的宿主内部句柄（不受 `withGlobalTauri`
-/// 影响）；后者仅在 `withGlobalTauri: true` 时由 `withGlobalTauri.js` 注入，
-/// 而本仓库配置是 `false`，且 dsh 上游页面也不归我们控制——主窗口
-/// navigate 到 dsh 之后 `window.__TAURI__` 根本不存在，调它会抛
-/// ReferenceError，触发浏览器默认 Ctrl+Shift+P 行为（Chrome 快捷键
-/// 面板），用户感受就是"快捷键没反应"。`__TAURI_INTERNALS__` 同样
-/// 不受 dsh 自己 JS 影响，且只对宿主可见，安全。
-const PALETTE_SHORTCUT_SCRIPT: &str = r#"
-(function () {
-  if (window.__dsh_palette_listener_installed) return;
-  window.__dsh_palette_listener_installed = true;
-  window.addEventListener('keydown', function (e) {
-    if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey &&
-        (e.key === 'P' || e.key === 'p')) {
-      e.preventDefault();
-      e.stopPropagation();
-      // 用宿主内部 IPC 句柄发起命令；命令无参，必须显式传 `{}`，
-      // 否则 Tauri 内部把 undefined 当 payload 处理会序列化失败。
-      window.__TAURI_INTERNALS__.invoke('open_plugins_window', {})
-        .catch(function (err) { console.error('[dsh] open_plugins_window failed', err); });
-    }
-  }, true);
-})();
-"#;
-
-/// 把 `PALETTE_SHORTCUT_SCRIPT` 注入到指定 webview 的当前文档。
-/// 注入脚本自身用 `__dsh_palette_listener_installed` 做幂等，
-/// 所以同一文档里多次调用是安全的。
-fn install_palette_shortcut_on_webview(webview: &tauri::Webview) {
-    if let Err(err) = webview.eval(PALETTE_SHORTCUT_SCRIPT) {
-        warn!(?err, "failed to inject palette shortcut listener");
-    }
+/// Register the OS-level global shortcut `Ctrl+Shift+P` for opening the
+/// command palette. Why global and not webview keydown: the main window
+/// navigates into dsh's upstream web UI (host 127.0.0.1:<port>), and on
+/// Windows / WebView2 `Ctrl+Shift+P` is also bound at the host level as
+/// a print-preview accelerator — the keydown never reaches the webview
+/// JS layer, so a `keydown` listener cannot preventDefault it. The
+/// `tauri-plugin-global-shortcut` plugin uses `RegisterHotKey` on
+/// Windows, which intercepts the keystroke before WebView2 sees it, so
+/// the user gets the palette instead of the print dialog.
+fn install_palette_global_shortcut(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyP);
+    let handle = app.handle().clone();
+    app.global_shortcut()
+        .on_shortcut(shortcut, move |_app, _sc, event| {
+            if event.state == ShortcutState::Pressed {
+                open_palette(&handle);
+            }
+        })?;
+    info!("global shortcut Ctrl+Shift+P registered for command palette");
+    Ok(())
 }
