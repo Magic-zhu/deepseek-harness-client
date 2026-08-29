@@ -34,7 +34,10 @@ impl DshInvocation {
     pub fn plan(&self, args: &[&str]) -> LaunchPlan {
         let mut full = self.prefix.clone();
         full.extend(args.iter().map(|s| (*s).to_string()));
-        LaunchPlan { program: self.program.clone(), args: full }
+        LaunchPlan {
+            program: self.program.clone(),
+            args: full,
+        }
     }
 
     /// One-line display for diagnostics; never executed.
@@ -101,16 +104,25 @@ pub fn resolve_invocation(bin_override: Option<&str>) -> DshInvocation {
         return DshInvocation { program, prefix };
     }
     if find_in_path("dsh").is_some() {
-        return DshInvocation { program: "dsh".into(), prefix: Vec::new() };
+        return DshInvocation {
+            program: "dsh".into(),
+            prefix: Vec::new(),
+        };
     }
     if find_in_path("npx").is_some() {
         return DshInvocation {
             program: "npx".into(),
-            prefix: ["-y", "@deepseek-ai/dsh@latest"].iter().map(|s| s.to_string()).collect(),
+            prefix: ["-y", "@deepseek-ai/dsh@latest"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
         };
     }
     // Nothing on PATH: keep the plain name so the spawn error names the target.
-    DshInvocation { program: "dsh".into(), prefix: Vec::new() }
+    DshInvocation {
+        program: "dsh".into(),
+        prefix: Vec::new(),
+    }
 }
 
 /// Resolve how this machine launches `dsh web`.
@@ -177,7 +189,17 @@ mod tests {
         let invocation = resolve_invocation(Some("node /opt/dsh/bin.js"));
         let plan = invocation.plan(&["plugin", "--profile", "web", "add", "foo"]);
         assert_eq!(plan.program, "node");
-        assert_eq!(plan.args, vec!["/opt/dsh/bin.js", "plugin", "--profile", "web", "add", "foo"]);
+        assert_eq!(
+            plan.args,
+            vec![
+                "/opt/dsh/bin.js",
+                "plugin",
+                "--profile",
+                "web",
+                "add",
+                "foo"
+            ]
+        );
     }
 
     #[test]

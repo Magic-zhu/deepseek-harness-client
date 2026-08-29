@@ -90,7 +90,11 @@ async fn crash_enters_backoff_then_relaunches() {
         other => panic!("expected Starting, got {other:?}"),
     }
     match next_lifecycle(&mut receiver).await {
-        SupervisorEvent::Crashed { attempt, reason, retry_in_ms } => {
+        SupervisorEvent::Crashed {
+            attempt,
+            reason,
+            retry_in_ms,
+        } => {
             assert_eq!(attempt, 1);
             assert_eq!(retry_in_ms, 500);
             assert!(reason.contains("exit code"), "reason was {reason}");

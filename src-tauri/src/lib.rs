@@ -93,19 +93,27 @@ fn daemon_stop(state: tauri::State<DaemonState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn plugin_install(state: tauri::State<'_, PluginTasksState>, spec: String) -> Result<String, String> {
+fn plugin_install(
+    state: tauri::State<'_, PluginTasksState>,
+    spec: String,
+) -> Result<String, String> {
     state.runner.submit(PluginTaskKind::Install, spec)
 }
 
 #[tauri::command]
-fn plugin_remove(state: tauri::State<'_, PluginTasksState>, spec: String) -> Result<String, String> {
+fn plugin_remove(
+    state: tauri::State<'_, PluginTasksState>,
+    spec: String,
+) -> Result<String, String> {
     state.runner.submit(PluginTaskKind::Remove, spec)
 }
 
 /// Snapshot of queued/finished plugin tasks so a (re)mounted task center can
 /// catch up without waiting for the next state-change event.
 #[tauri::command]
-fn plugin_tasks_list(state: tauri::State<'_, PluginTasksState>) -> Result<Vec<dsh_profile::tasks::PluginTaskView>, String> {
+fn plugin_tasks_list(
+    state: tauri::State<'_, PluginTasksState>,
+) -> Result<Vec<dsh_profile::tasks::PluginTaskView>, String> {
     Ok(state.runner.list())
 }
 
@@ -172,7 +180,9 @@ struct PreflightReportDto {
 }
 
 #[tauri::command]
-async fn preflight_check(state: tauri::State<'_, PreflightState>) -> Result<PreflightReportDto, String> {
+async fn preflight_check(
+    state: tauri::State<'_, PreflightState>,
+) -> Result<PreflightReportDto, String> {
     let report = dsh_supervisor::run_probe(
         state.bin_override.as_deref(),
         state.path_node.as_deref(),
@@ -239,8 +249,10 @@ fn channel_of(event: &SupervisorEvent) -> &'static str {
 fn navigate(window: &WebviewWindow, url: &Url) {
     if let Err(err) = window.navigate(url.clone()) {
         warn!(?url, %err, "navigate failed; falling back to location.replace");
-        let Ok(literal) = serde_json::to_string(url.as_str()) else { return };
-        let _ = window.eval(&format!("window.location.replace({literal})"));
+        let Ok(literal) = serde_json::to_string(url.as_str()) else {
+            return;
+        };
+        let _ = window.eval(format!("window.location.replace({literal})"));
     }
 }
 
@@ -265,9 +277,15 @@ fn show_window(app: &AppHandle, label: &str) -> Result<(), String> {
 /// if either window can't be read, so a transient query failure never
 /// blocks the open path.
 fn center_over(target: &WebviewWindow, overlay: &WebviewWindow) {
-    let Ok(target_pos) = target.outer_position() else { return };
-    let Ok(target_size) = target.outer_size() else { return };
-    let Ok(overlay_size) = overlay.outer_size() else { return };
+    let Ok(target_pos) = target.outer_position() else {
+        return;
+    };
+    let Ok(target_size) = target.outer_size() else {
+        return;
+    };
+    let Ok(overlay_size) = overlay.outer_size() else {
+        return;
+    };
     let x = target_pos.x + (target_size.width as i32 - overlay_size.width as i32) / 2;
     let y = target_pos.y + (target_size.height as i32 - overlay_size.height as i32) / 2;
     let _ = overlay.set_position(PhysicalPosition::new(x, y));
@@ -368,8 +386,11 @@ pub fn run() {
             });
 
             let invocation = dsh_supervisor::resolve_invocation(bin_override.as_deref());
-            let runner = tauri::async_runtime::block_on(async { PluginTaskRunner::start(invocation) });
-            app.manage(PluginTasksState { runner: runner.clone() });
+            let runner =
+                tauri::async_runtime::block_on(async { PluginTaskRunner::start(invocation) });
+            app.manage(PluginTasksState {
+                runner: runner.clone(),
+            });
             tauri::async_runtime::spawn(plugins_forward_task(app.handle().clone(), runner));
 
             let report = tauri::async_runtime::block_on(async {
@@ -469,22 +490,17 @@ pub fn run() {
 /// the operator opts in.
 fn init_tracing() {
     use tracing_subscriber::{fmt, EnvFilter};
-    let filter = EnvFilter::try_from_env("DSH_CLIENT_LOG")
-        .unwrap_or_else(|_| EnvFilter::new("warn"));
-    let _ = fmt()
-        .with_env_filter(filter)
-        .with_target(false)
-        .try_init();
+    let filter =
+        EnvFilter::try_from_env("DSH_CLIENT_LOG").unwrap_or_else(|_| EnvFilter::new("warn"));
+    let _ = fmt().with_env_filter(filter).with_target(false).try_init();
 }
 
 /// Install the system tray icon, its right-click menu, and the left-click
 /// handler that opens the command palette. Reuses `app.default_window_icon()`
 /// so no extra icon asset is required.
 fn install_tray(app: &tauri::App) -> tauri::Result<()> {
-    let show_palette_item =
-        MenuItemBuilder::with_id("show_palette", "打开命令面板").build(app)?;
-    let show_plugins_item =
-        MenuItemBuilder::with_id("show_plugins", "打开插件管理").build(app)?;
+    let show_palette_item = MenuItemBuilder::with_id("show_palette", "打开命令面板").build(app)?;
+    let show_plugins_item = MenuItemBuilder::with_id("show_plugins", "打开插件管理").build(app)?;
     let show_main_item = MenuItemBuilder::with_id("show_main", "打开主窗口").build(app)?;
     let restart_item = MenuItemBuilder::with_id("restart", "重启 dsh 守护进程").build(app)?;
     let quit_item = MenuItemBuilder::with_id("quit", "退出 DeepSeek Harness").build(app)?;

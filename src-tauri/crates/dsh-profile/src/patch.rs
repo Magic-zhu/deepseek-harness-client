@@ -75,13 +75,22 @@ pub fn apply_set_disabled(text: &str, entry_id: &str, disabled: bool) -> String 
         }
         out.push(line);
     }
-    let mut result = if out.is_empty() { String::new() } else { out.join("\n") + "\n" };
-    result.push_str(&format!("- id: {entry_id}  {MARKER}\n  disabled: {disabled}  {MARKER}\n"));
+    let mut result = if out.is_empty() {
+        String::new()
+    } else {
+        out.join("\n") + "\n"
+    };
+    result.push_str(&format!(
+        "- id: {entry_id}  {MARKER}\n  disabled: {disabled}  {MARKER}\n"
+    ));
     result
 }
 
 fn sibling_with_suffix(path: &Path, suffix: &str) -> PathBuf {
-    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("cordis.patch.yml");
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("cordis.patch.yml");
     path.with_file_name(format!("{name}{suffix}"))
 }
 
@@ -93,12 +102,17 @@ fn sibling_with_suffix(path: &Path, suffix: &str) -> PathBuf {
 /// - No-op when the intent is already realized (keeps mtime stable, so the
 ///   upstream HMR watcher does not see phantom writes).
 pub fn set_disabled(patch_path: &Path, entry_id: &str, disabled: bool) -> Result<(), PatchError> {
-    let err = |message: String| PatchError { path: patch_path.to_path_buf(), message };
+    let err = |message: String| PatchError {
+        path: patch_path.to_path_buf(),
+        message,
+    };
     validate_entry_id(entry_id).map_err(&err)?;
 
     let parent = patch_path.parent().expect("patch file path has a parent");
     if !parent.is_dir() {
-        return Err(err("profile 目录不存在；请先启动一次 daemon 以初始化 profile".into()));
+        return Err(err(
+            "profile 目录不存在；请先启动一次 daemon 以初始化 profile".into(),
+        ));
     }
 
     let (original, existed) = match std::fs::read_to_string(patch_path) {
@@ -131,7 +145,8 @@ mod tests {
     use std::path::PathBuf;
 
     fn temp_dir(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("dsh-profile-test-{}-{tag}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("dsh-profile-test-{}-{tag}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -140,7 +155,10 @@ mod tests {
     #[test]
     fn apply_to_empty_text_writes_one_block() {
         let out = apply_set_disabled("", "assistant/memory", true);
-        assert_eq!(out, "- id: assistant/memory  # dsh-client\n  disabled: true  # dsh-client\n");
+        assert_eq!(
+            out,
+            "- id: assistant/memory  # dsh-client\n  disabled: true  # dsh-client\n"
+        );
     }
 
     #[test]
@@ -167,7 +185,11 @@ mod tests {
     fn flips_existing_block_without_duplicating() {
         let first = apply_set_disabled("", "a", true);
         let flipped = apply_set_disabled(&first, "a", false);
-        assert_eq!(flipped.matches("- id: a  # dsh-client").count(), 1, "同一 entry 恰好一条：{flipped}");
+        assert_eq!(
+            flipped.matches("- id: a  # dsh-client").count(),
+            1,
+            "同一 entry 恰好一条：{flipped}"
+        );
         assert!(flipped.contains("disabled: false"));
     }
 
@@ -175,7 +197,10 @@ mod tests {
     fn entry_a_does_not_match_nested_a_b() {
         let text = "- id: a:b  # dsh-client\n  disabled: true  # dsh-client\n";
         let out = apply_set_disabled(text, "a", false);
-        assert!(out.contains("- id: a:b  # dsh-client"), "前缀不误伤嵌套 id：{out}");
+        assert!(
+            out.contains("- id: a:b  # dsh-client"),
+            "前缀不误伤嵌套 id：{out}"
+        );
     }
 
     #[test]
@@ -184,7 +209,10 @@ mod tests {
         let messy = "- id: a  # dsh-client\n  disabled: true  # dsh-client\n- id: b\n  disabled: true\n- id: a  # dsh-client\n  disabled: true  # dsh-client\n";
         let out = apply_set_disabled(messy, "a", false);
         assert_eq!(out.matches("- id: a  # dsh-client").count(), 1);
-        assert!(out.contains("- id: b\n  disabled: true\n"), "非我方行不动：{out}");
+        assert!(
+            out.contains("- id: b\n  disabled: true\n"),
+            "非我方行不动：{out}"
+        );
     }
 
     #[test]
@@ -206,7 +234,11 @@ mod tests {
         assert!(text.contains("- id: a  # dsh-client"));
 
         let backup = dir.join(format!("cordis.patch.yml{BACKUP_SUFFIX}"));
-        assert_eq!(std::fs::read_to_string(&backup).unwrap(), "- insert:\n    - id: x\n", "首写备份为原始内容");
+        assert_eq!(
+            std::fs::read_to_string(&backup).unwrap(),
+            "- insert:\n    - id: x\n",
+            "首写备份为原始内容"
+        );
 
         // 第二次写入不覆盖备份。
         std::fs::write(&backup, "手工改过的备份").unwrap();
@@ -220,7 +252,11 @@ mod tests {
         let patch = dir.join("cordis.patch.yml");
         set_disabled(&patch, "a", true).unwrap();
         assert!(patch.is_file());
-        assert!(!dir.join(format!("cordis.patch.yml{BACKUP_SUFFIX}")).exists(), "无原件则无备份");
+        assert!(
+            !dir.join(format!("cordis.patch.yml{BACKUP_SUFFIX}"))
+                .exists(),
+            "无原件则无备份"
+        );
     }
 
     #[test]

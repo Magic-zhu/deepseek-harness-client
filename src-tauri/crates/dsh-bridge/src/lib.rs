@@ -17,7 +17,11 @@ pub enum ApiError {
     /// status never carries business meaning in this envelope).
     Transport(String),
     /// Business error from the daemon: code/message/details verbatim.
-    Rpc { code: String, message: String, details: Value },
+    Rpc {
+        code: String,
+        message: String,
+        details: Value,
+    },
     /// Malformed envelope, bad method shape, or rpcId echo mismatch.
     Protocol(String),
 }
@@ -36,7 +40,9 @@ impl std::error::Error for ApiError {}
 
 /// One method-name segment: ASCII alnum plus `-`/`_`, nonempty.
 fn valid_segment(s: &str) -> bool {
-    !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    !s.is_empty()
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
 /// Method shape whitelist: `<domain>.<name>` (static method) or
@@ -45,10 +51,18 @@ fn valid_segment(s: &str) -> bool {
 pub fn validate_method(method: &str) -> Result<(), ApiError> {
     let bad = || ApiError::Protocol(format!("非法 method 形状：{method:?}"));
     if let Some((ns, name)) = method.split_once('/') {
-        return if valid_segment(ns) && valid_segment(name) { Ok(()) } else { Err(bad()) };
+        return if valid_segment(ns) && valid_segment(name) {
+            Ok(())
+        } else {
+            Err(bad())
+        };
     }
     if let Some((domain, name)) = method.split_once('.') {
-        return if valid_segment(domain) && valid_segment(name) { Ok(()) } else { Err(bad()) };
+        return if valid_segment(domain) && valid_segment(name) {
+            Ok(())
+        } else {
+            Err(bad())
+        };
     }
     Err(bad())
 }
@@ -57,7 +71,11 @@ pub fn validate_method(method: &str) -> Result<(), ApiError> {
 /// static methods take the payload verbatim. The frontend never writes the
 /// `args` shell itself.
 pub fn wrap_payload(method: &str, payload: Value) -> Value {
-    if method.contains('/') { json!({ "args": payload }) } else { payload }
+    if method.contains('/') {
+        json!({ "args": payload })
+    } else {
+        payload
+    }
 }
 
 /// Build the wire body; the minted rpcId is returned for echo validation.
@@ -76,23 +94,46 @@ pub fn build_body(method: &str, payload: Value) -> (String, Value) {
 /// `void` results have no `value` field and surface as `Value::Null`.
 pub fn parse_response(body: &Value, expected_rpc_id: &str) -> Result<Value, ApiError> {
     if body.get("type").and_then(Value::as_str) != Some("server-response") {
-        return Err(ApiError::Protocol(format!("响应 type 非 server-response：{body}")));
+        return Err(ApiError::Protocol(format!(
+            "响应 type 非 server-response：{body}"
+        )));
     }
-    let echoed = body.get("rpcId").and_then(Value::as_str).unwrap_or_default();
+    let echoed = body
+        .get("rpcId")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     if echoed != expected_rpc_id {
-        return Err(ApiError::Protocol(format!("rpcId 回声不符：期望 {expected_rpc_id}，收到 {echoed:?}")));
+        return Err(ApiError::Protocol(format!(
+            "rpcId 回声不符：期望 {expected_rpc_id}，收到 {echoed:?}"
+        )));
     }
-    let result = body.get("result").ok_or_else(|| ApiError::Protocol("响应缺 result 字段".into()))?;
+    let result = body
+        .get("result")
+        .ok_or_else(|| ApiError::Protocol("响应缺 result 字段".into()))?;
     match result.get("ok").and_then(Value::as_bool) {
         Some(true) => Ok(result.get("value").cloned().unwrap_or(Value::Null)),
         Some(false) => {
             let error = result.get("error").cloned().unwrap_or(Value::Null);
-            let code = error.get("code").and_then(Value::as_str).unwrap_or("internal").to_string();
-            let message = error.get("message").and_then(Value::as_str).unwrap_or("（无 message）").to_string();
+            let code = error
+                .get("code")
+                .and_then(Value::as_str)
+                .unwrap_or("internal")
+                .to_string();
+            let message = error
+                .get("message")
+                .and_then(Value::as_str)
+                .unwrap_or("（无 message）")
+                .to_string();
             let details = error.get("details").cloned().unwrap_or(Value::Null);
-            Err(ApiError::Rpc { code, message, details })
+            Err(ApiError::Rpc {
+                code,
+                message,
+                details,
+            })
         }
-        _ => Err(ApiError::Protocol(format!("result.ok 缺失或非布尔：{result}"))),
+        _ => Err(ApiError::Protocol(format!(
+            "result.ok 缺失或非布尔：{result}"
+        ))),
     }
 }
 
@@ -110,7 +151,10 @@ impl ApiClient {
             .timeout(CALL_TIMEOUT)
             .build()
             .expect("reqwest client build");
-        Self { http, base: format!("http://127.0.0.1:{port}") }
+        Self {
+            http,
+            base: format!("http://127.0.0.1:{port}"),
+        }
     }
 
     pub async fn call(&self, method: &str, payload: Value) -> Result<Value, ApiError> {
@@ -127,7 +171,10 @@ impl ApiClient {
         if !response.status().is_success() {
             return Err(ApiError::Transport(format!("HTTP {}", response.status())));
         }
-        let raw: Value = response.json().await.map_err(|e| ApiError::Protocol(e.to_string()))?;
+        let raw: Value = response
+            .json()
+            .await
+            .map_err(|e| ApiError::Protocol(e.to_string()))?;
         parse_response(&raw, &rpc_id)
     }
 }
@@ -146,16 +193,24 @@ mod tests {
 
     #[test]
     fn validate_method_rejects_path_smuggling() {
-        for bad in ["", "foo", "a//b", "a/b/c", "a.b.c", "../etc", "a b/c", "a?b/c", "/list", "x/"] {
+        for bad in [
+            "", "foo", "a//b", "a/b/c", "a.b.c", "../etc", "a b/c", "a?b/c", "/list", "x/",
+        ] {
             assert!(validate_method(bad).is_err(), "应拒绝 {bad:?}");
         }
     }
 
     #[test]
     fn wrap_payload_only_wraps_remote_methods() {
-        assert_eq!(wrap_payload("pluginInventory/list", json!({})), json!({ "args": {} }));
         assert_eq!(
-            wrap_payload("dynamicCordisRunner/stopFromPanel", json!({ "pluginId": "p" })),
+            wrap_payload("pluginInventory/list", json!({})),
+            json!({ "args": {} })
+        );
+        assert_eq!(
+            wrap_payload(
+                "dynamicCordisRunner/stopFromPanel",
+                json!({ "pluginId": "p" })
+            ),
             json!({ "args": { "pluginId": "p" } }),
         );
         let plain = json!({ "ns": "x" });
@@ -178,7 +233,10 @@ mod tests {
             "type": "server-response", "rpcId": "r1",
             "result": { "ok": true, "value": { "entries": [] } },
         });
-        assert_eq!(parse_response(&body, "r1").unwrap(), json!({ "entries": [] }));
+        assert_eq!(
+            parse_response(&body, "r1").unwrap(),
+            json!({ "entries": [] })
+        );
     }
 
     #[test]
@@ -188,7 +246,10 @@ mod tests {
             "type": "server-response", "rpcId": "r1",
             "result": { "ok": true },
         });
-        assert_eq!(parse_response(&body, "r1").unwrap(), serde_json::Value::Null);
+        assert_eq!(
+            parse_response(&body, "r1").unwrap(),
+            serde_json::Value::Null
+        );
     }
 
     #[test]
@@ -201,7 +262,11 @@ mod tests {
             } },
         });
         match parse_response(&body, "r1") {
-            Err(ApiError::Rpc { code, message, details }) => {
+            Err(ApiError::Rpc {
+                code,
+                message,
+                details,
+            }) => {
                 assert_eq!(code, "settings-conflict");
                 assert_eq!(message, "revision 过期");
                 assert_eq!(details["actual"], 2);
@@ -213,16 +278,29 @@ mod tests {
     #[test]
     fn parse_response_rejects_rpc_id_mismatch_and_bad_type() {
         let body = json!({ "type": "server-response", "rpcId": "r2", "result": { "ok": true } });
-        assert!(matches!(parse_response(&body, "r1"), Err(ApiError::Protocol(_))));
+        assert!(matches!(
+            parse_response(&body, "r1"),
+            Err(ApiError::Protocol(_))
+        ));
         let not_response = json!({ "type": "server-request", "rpcId": "r1" });
-        assert!(matches!(parse_response(&not_response, "r1"), Err(ApiError::Protocol(_))));
+        assert!(matches!(
+            parse_response(&not_response, "r1"),
+            Err(ApiError::Protocol(_))
+        ));
     }
 
     #[test]
     fn api_error_display_formats() {
-        let rpc = ApiError::Rpc { code: "settings-conflict".into(), message: "过期".into(), details: json!({}) };
+        let rpc = ApiError::Rpc {
+            code: "settings-conflict".into(),
+            message: "过期".into(),
+            details: json!({}),
+        };
         assert_eq!(rpc.to_string(), "[settings-conflict] 过期");
-        assert_eq!(ApiError::Transport("超时".into()).to_string(), "传输失败：超时");
+        assert_eq!(
+            ApiError::Transport("超时".into()).to_string(),
+            "传输失败：超时"
+        );
     }
 
     /// Loopback stub server: one request in, fixed envelope out (rpcId echoed
@@ -260,11 +338,20 @@ mod tests {
         });
 
         let client = ApiClient::new(port);
-        let value = client.call("pluginInventory/list", json!({})).await.unwrap();
+        let value = client
+            .call("pluginInventory/list", json!({}))
+            .await
+            .unwrap();
         assert_eq!(value, json!({ "pong": true }));
 
         let request = rx.recv().unwrap();
-        assert!(request.starts_with("POST /api/pluginInventory/list HTTP/1.1"), "{request}");
-        assert!(request.contains(r#""payload":{"args":{}}"#), "Remote 方法应自动包 args 壳：{request}");
+        assert!(
+            request.starts_with("POST /api/pluginInventory/list HTTP/1.1"),
+            "{request}"
+        );
+        assert!(
+            request.contains(r#""payload":{"args":{}}"#),
+            "Remote 方法应自动包 args 壳：{request}"
+        );
     }
 }

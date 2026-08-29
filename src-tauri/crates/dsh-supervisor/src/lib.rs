@@ -18,7 +18,7 @@ use std::time::Duration;
 use serde::Serialize;
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::process::Child;
-use tokio::sync::{broadcast, watch, Mutex, oneshot};
+use tokio::sync::{broadcast, oneshot, watch, Mutex};
 
 pub use preflight::{run_probe, PreflightReport, VersionSource, REQUIRED_ENGINE};
 pub use resolve::{
@@ -85,7 +85,11 @@ pub enum SupervisorEvent {
     /// The daemon printed its URL line: /api is mounted and accepting.
     Ready { port: u16, pid: u32 },
     /// The child died or never became ready; next attempt after `retry_in_ms`.
-    Crashed { attempt: u32, reason: String, retry_in_ms: u64 },
+    Crashed {
+        attempt: u32,
+        reason: String,
+        retry_in_ms: u64,
+    },
     /// Supervision ended by request; the child tree is gone.
     Stopped,
     /// One stdout/stderr line from the child tree.
@@ -267,8 +271,13 @@ async fn run_loop(inner: std::sync::Arc<Inner>, mut control: watch::Receiver<Con
         let mut child = match inner.launch.spawn().await {
             Ok(child) => child,
             Err(err) => {
-                match backoff_or_stop(&inner, attempt, format!("spawn failed: {err}"), &mut control)
-                    .await
+                match backoff_or_stop(
+                    &inner,
+                    attempt,
+                    format!("spawn failed: {err}"),
+                    &mut control,
+                )
+                .await
                 {
                     Flow::Continue => continue 'supervise,
                     Flow::Restart => {
@@ -363,16 +372,28 @@ async fn run_loop(inner: std::sync::Arc<Inner>, mut control: watch::Receiver<Con
                 let reason = describe_exit(&status);
                 match backoff_or_stop(&inner, attempt, reason, &mut control).await {
                     Flow::Continue => continue 'supervise,
-                    Flow::Restart => { attempt = 0; continue 'supervise; }
-                    Flow::Stop => { finish_stop(&inner).await; return; }
+                    Flow::Restart => {
+                        attempt = 0;
+                        continue 'supervise;
+                    }
+                    Flow::Stop => {
+                        finish_stop(&inner).await;
+                        return;
+                    }
                 }
             }
             RunOutcome::Exited(Err(err)) => {
                 let reason = format!("wait failed: {err}");
                 match backoff_or_stop(&inner, attempt, reason, &mut control).await {
                     Flow::Continue => continue 'supervise,
-                    Flow::Restart => { attempt = 0; continue 'supervise; }
-                    Flow::Stop => { finish_stop(&inner).await; return; }
+                    Flow::Restart => {
+                        attempt = 0;
+                        continue 'supervise;
+                    }
+                    Flow::Stop => {
+                        finish_stop(&inner).await;
+                        return;
+                    }
                 }
             }
             RunOutcome::ServiceDead => {
@@ -380,8 +401,14 @@ async fn run_loop(inner: std::sync::Arc<Inner>, mut control: watch::Receiver<Con
                 let reason = "service stopped responding on its port".to_string();
                 match backoff_or_stop(&inner, attempt, reason, &mut control).await {
                     Flow::Continue => continue 'supervise,
-                    Flow::Restart => { attempt = 0; continue 'supervise; }
-                    Flow::Stop => { finish_stop(&inner).await; return; }
+                    Flow::Restart => {
+                        attempt = 0;
+                        continue 'supervise;
+                    }
+                    Flow::Stop => {
+                        finish_stop(&inner).await;
+                        return;
+                    }
                 }
             }
         }
@@ -449,7 +476,10 @@ async fn kill_and_reap(inner: &std::sync::Arc<Inner>, child: &mut Child, pid: u3
             }
         }
     }
-    if tokio::time::timeout(KILL_GRACE, child.wait()).await.is_err() {
+    if tokio::time::timeout(KILL_GRACE, child.wait())
+        .await
+        .is_err()
+    {
         #[cfg(unix)]
         unsafe {
             libc::killpg(pid as i32, libc::SIGKILL);
@@ -516,9 +546,7 @@ async fn push_log(inner: &std::sync::Arc<Inner>, stream: LogStream, line: String
             tail.pop_front();
         }
     }
-    let _ = inner
-        .events
-        .send(SupervisorEvent::Log { stream, line });
+    let _ = inner.events.send(SupervisorEvent::Log { stream, line });
 }
 
 /// Extract the port from `dsh web: http://127.0.0.1:<port>` (anywhere in the

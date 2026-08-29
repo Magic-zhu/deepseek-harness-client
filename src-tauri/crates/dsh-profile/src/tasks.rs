@@ -56,7 +56,10 @@ fn validate_spec(spec: &str) -> Result<(), String> {
     if spec.is_empty() || spec.trim() != spec {
         return Err("spec 为空或含首尾空白".to_string());
     }
-    if spec.chars().any(|c| c.is_whitespace() || "&|<>^\"\r\n".contains(c)) {
+    if spec
+        .chars()
+        .any(|c| c.is_whitespace() || "&|<>^\"\r\n".contains(c))
+    {
         return Err(format!("spec 含非法字符：{spec:?}"));
     }
     Ok(())
@@ -82,7 +85,11 @@ impl PluginTaskRunner {
     pub fn start(invocation: DshInvocation) -> Self {
         let (sender, receiver) = mpsc::unbounded_channel::<Job>();
         let (events, _) = broadcast::channel(64);
-        let runner = Self { sender, views: Arc::new(Mutex::new(Vec::new())), events };
+        let runner = Self {
+            sender,
+            views: Arc::new(Mutex::new(Vec::new())),
+            events,
+        };
         let worker = runner.clone();
         tokio::spawn(async move { worker_loop(invocation, receiver, worker).await });
         runner
@@ -101,10 +108,17 @@ impl PluginTaskRunner {
             output_tail: Vec::new(),
             exit_code: None,
         };
-        self.views.lock().expect("views lock poisoned").push(view.clone());
+        self.views
+            .lock()
+            .expect("views lock poisoned")
+            .push(view.clone());
         let _ = self.events.send(view);
         self.sender
-            .send(Job { task_id: task_id.clone(), kind, spec })
+            .send(Job {
+                task_id: task_id.clone(),
+                kind,
+                spec,
+            })
             .map_err(|_| "任务队列已关闭".to_string())?;
         Ok(task_id)
     }
@@ -120,14 +134,22 @@ impl PluginTaskRunner {
     fn with_view(&self, task_id: &str, f: impl FnOnce(&mut PluginTaskView)) {
         let view = {
             let mut views = self.views.lock().expect("views lock poisoned");
-            let Some(view) = views.iter_mut().find(|v| v.task_id == task_id) else { return };
+            let Some(view) = views.iter_mut().find(|v| v.task_id == task_id) else {
+                return;
+            };
             f(view);
             view.clone()
         };
         let _ = self.events.send(view);
     }
 
-    fn finish(&self, task_id: &str, status: PluginTaskStatus, exit_code: Option<i32>, line: String) {
+    fn finish(
+        &self,
+        task_id: &str,
+        status: PluginTaskStatus,
+        exit_code: Option<i32>,
+        line: String,
+    ) {
         self.with_view(task_id, |view| {
             push_line(view, line);
             view.status = status;
@@ -135,7 +157,10 @@ impl PluginTaskRunner {
         });
         // Retention: bound finished tasks, oldest first.
         let mut views = self.views.lock().expect("views lock poisoned");
-        let finished = views.iter().filter(|v| v.status != PluginTaskStatus::Running).count();
+        let finished = views
+            .iter()
+            .filter(|v| v.status != PluginTaskStatus::Running)
+            .count();
         let mut remove = finished.saturating_sub(FINISHED_RETAIN);
         if remove > 0 {
             views.retain(|v| {
@@ -151,7 +176,11 @@ impl PluginTaskRunner {
 }
 
 /// Stream one piped child output into the task's tail, line by line.
-fn spawn_reader<S>(stream: S, runner: PluginTaskRunner, task_id: String) -> tokio::task::JoinHandle<()>
+fn spawn_reader<S>(
+    stream: S,
+    runner: PluginTaskRunner,
+    task_id: String,
+) -> tokio::task::JoinHandle<()>
 where
     S: tokio::io::AsyncRead + Unpin + Send + 'static,
 {
@@ -179,13 +208,20 @@ async fn run_one(invocation: &DshInvocation, job: &Job, runner: &PluginTaskRunne
         PluginTaskKind::Remove => "remove",
     };
     let plan = invocation.plan(&["plugin", "--profile", "web", verb, &job.spec]);
-    runner.with_view(&job.task_id, |view| push_line(view, format!("$ {}", plan.display())));
+    runner.with_view(&job.task_id, |view| {
+        push_line(view, format!("$ {}", plan.display()))
+    });
 
     let spawned = plan.spawn_env(&[("CI", "true")]).await;
     let mut child = match spawned {
         Ok(child) => child,
         Err(err) => {
-            runner.finish(&job.task_id, PluginTaskStatus::Failed, None, format!("启动失败：{err}"));
+            runner.finish(
+                &job.task_id,
+                PluginTaskStatus::Failed,
+                None,
+                format!("启动失败：{err}"),
+            );
             return;
         }
     };
@@ -199,13 +235,28 @@ async fn run_one(invocation: &DshInvocation, job: &Job, runner: &PluginTaskRunne
 
     match child.wait().await {
         Ok(status) if status.success() => {
-            runner.finish(&job.task_id, PluginTaskStatus::Done, status.code(), "完成".into());
+            runner.finish(
+                &job.task_id,
+                PluginTaskStatus::Done,
+                status.code(),
+                "完成".into(),
+            );
         }
         Ok(status) => {
-            runner.finish(&job.task_id, PluginTaskStatus::Failed, status.code(), format!("退出码 {:?}", status.code()));
+            runner.finish(
+                &job.task_id,
+                PluginTaskStatus::Failed,
+                status.code(),
+                format!("退出码 {:?}", status.code()),
+            );
         }
         Err(err) => {
-            runner.finish(&job.task_id, PluginTaskStatus::Failed, None, format!("等待退出失败：{err}"));
+            runner.finish(
+                &job.task_id,
+                PluginTaskStatus::Failed,
+                None,
+                format!("等待退出失败：{err}"),
+            );
         }
     }
 }
@@ -217,7 +268,9 @@ mod tests {
     #[test]
     fn validate_spec_rejects_shell_metacharacters() {
         // Windows 下经 cmd /c 透传，& | < > ^ " 与空白都可能被 cmd 重新解释。
-        for bad in ["", " a", "a ", "a b", "a&calc", "a|b", "a>b", "a\"b", "a^b", "a\nb"] {
+        for bad in [
+            "", " a", "a ", "a b", "a&calc", "a|b", "a>b", "a\"b", "a^b", "a\nb",
+        ] {
             assert!(validate_spec(bad).is_err(), "应拒绝 {bad:?}");
         }
         // 注：caret-range（@scope/name@^1.2.3）经 cmd /c 时 ^ 被吞、语义被
@@ -272,25 +325,44 @@ mod tests {
             let script = dir.join("fake-dsh.sh");
             std::fs::write(
                 &script,
-                format!("#!/bin/sh\necho start \"$@\" >> \"{}\"\nsleep 1\necho end \"$@\" >> \"{}\"\n", log.display(), log.display()),
+                format!(
+                    "#!/bin/sh\necho start \"$@\" >> \"{}\"\nsleep 1\necho end \"$@\" >> \"{}\"\n",
+                    log.display(),
+                    log.display()
+                ),
             )
             .unwrap();
             std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
             script.to_string_lossy().into_owned()
         };
 
-        let runner = PluginTaskRunner::start(DshInvocation { program, prefix: vec![] });
-        let t1 = runner.submit(PluginTaskKind::Install, "spec-a".into()).unwrap();
-        let t2 = runner.submit(PluginTaskKind::Remove, "spec-b".into()).unwrap();
+        let runner = PluginTaskRunner::start(DshInvocation {
+            program,
+            prefix: vec![],
+        });
+        let t1 = runner
+            .submit(PluginTaskKind::Install, "spec-a".into())
+            .unwrap();
+        let t2 = runner
+            .submit(PluginTaskKind::Remove, "spec-b".into())
+            .unwrap();
 
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
         loop {
             let views = runner.list();
-            let done = |id: &str| views.iter().any(|v| v.task_id == id && v.status == PluginTaskStatus::Done);
+            let done = |id: &str| {
+                views
+                    .iter()
+                    .any(|v| v.task_id == id && v.status == PluginTaskStatus::Done)
+            };
             if done(&t1) && done(&t2) {
                 break;
             }
-            assert!(std::time::Instant::now() < deadline, "任务未在 15s 内完成：{:?}", runner.list());
+            assert!(
+                std::time::Instant::now() < deadline,
+                "任务未在 15s 内完成：{:?}",
+                runner.list()
+            );
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
 

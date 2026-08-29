@@ -142,7 +142,11 @@ fn parse_version(raw: &str) -> Option<Version> {
     let major = parts.next()?.parse().ok()?;
     let minor = parts.next()?.parse().ok()?;
     let patch = parts.next().and_then(|p| p.parse().ok()).unwrap_or(0);
-    Some(Version { major, minor, patch })
+    Some(Version {
+        major,
+        minor,
+        patch,
+    })
 }
 
 fn compare(a: &Version, b: &Version) -> std::cmp::Ordering {
@@ -165,7 +169,9 @@ pub async fn run_probe(
     // Prefer the override's first token — it is the binary that will
     // actually run `dsh web`. Fall back to PATH `node` if no override is set.
     let (probe_target, version_source) = match bin_override_first_token {
-        Some(bin) if !bin.trim().is_empty() => (Some(PathBuf::from(bin)), VersionSource::OverrideBin),
+        Some(bin) if !bin.trim().is_empty() => {
+            (Some(PathBuf::from(bin)), VersionSource::OverrideBin)
+        }
         _ => match path_node {
             Some(p) => (Some(p.to_path_buf()), VersionSource::PathNode),
             None => (None, VersionSource::Unavailable),
@@ -182,7 +188,8 @@ pub async fn run_probe(
         _ => false,
     };
 
-    let dsh_reachable = dsh_program != "dsh" || crate::resolve::find_in_path("dsh").is_some()
+    let dsh_reachable = dsh_program != "dsh"
+        || crate::resolve::find_in_path("dsh").is_some()
         || crate::resolve::find_in_path("npx").is_some();
 
     let failure = if !engine_ok {
@@ -248,9 +255,10 @@ fn build_failure_message(version: Option<&str>, source: VersionSource) -> String
         (Some(v), _) => format!(
             "检测到 Node {v}，不满足上游要求 {REQUIRED_ENGINE}；请用 nvm-windows 切换到 22.19+ 或 24+ 后重启应用"
         ),
-        (None, VersionSource::Unavailable) => format!(
+        (None, VersionSource::Unavailable) => {
             "未在 PATH 中找到 node；请先安装 Node 22.19+ 或 24+，或设置 DSH_CLIENT_BIN 指向已有的 node.exe"
-        ),
+                .to_string()
+        }
         (None, _) => format!(
             "虽然找到了 node 二进制，但无法读取其版本；请确认 node 可正常执行（`node -v`），要求 {REQUIRED_ENGINE}"
         ),
@@ -302,9 +310,6 @@ mod tests {
 
     #[test]
     fn tolerates_whitespace_around_or() {
-        assert!(engine_satisfies(
-            "v22.19.0",
-            "^22.19.0   ||   >=24.0.0"
-        ));
+        assert!(engine_satisfies("v22.19.0", "^22.19.0   ||   >=24.0.0"));
     }
 }

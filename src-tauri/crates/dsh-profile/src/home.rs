@@ -52,8 +52,10 @@ mod tests {
     use std::path::PathBuf;
 
     fn getter(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
-        let map: HashMap<String, String> =
-            pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        let map: HashMap<String, String> = pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
         move |key| map.get(key).cloned()
     }
 
@@ -64,15 +66,24 @@ mod tests {
 
     #[test]
     fn env_override_wins() {
-        let home = dsh_home_from(getter(&[("DSH_HOME", "D:/dsh-data"), (HOME_VAR, "C:/Users/x")])).unwrap();
+        let home = dsh_home_from(getter(&[
+            ("DSH_HOME", "D:/dsh-data"),
+            (HOME_VAR, "C:/Users/x"),
+        ]))
+        .unwrap();
         assert_eq!(home, PathBuf::from("D:/dsh-data"));
     }
 
     #[test]
     fn blank_env_falls_back_to_default() {
         for blank in ["", "   "] {
-            let home = dsh_home_from(getter(&[("DSH_HOME", blank), (HOME_VAR, "/home/x")])).unwrap();
-            assert_eq!(home, PathBuf::from("/home/x").join(".dsh"), "空白值 {blank:?} 应视为未设置");
+            let home =
+                dsh_home_from(getter(&[("DSH_HOME", blank), (HOME_VAR, "/home/x")])).unwrap();
+            assert_eq!(
+                home,
+                PathBuf::from("/home/x").join(".dsh"),
+                "空白值 {blank:?} 应视为未设置"
+            );
         }
     }
 
@@ -92,6 +103,9 @@ mod tests {
         let home = PathBuf::from("/data/.dsh");
         let profile = super::profile_dir(&home);
         assert_eq!(profile, PathBuf::from("/data/.dsh/profiles/web"));
-        assert_eq!(super::patch_file(&profile), PathBuf::from("/data/.dsh/profiles/web/cordis.patch.yml"));
+        assert_eq!(
+            super::patch_file(&profile),
+            PathBuf::from("/data/.dsh/profiles/web/cordis.patch.yml")
+        );
     }
 }

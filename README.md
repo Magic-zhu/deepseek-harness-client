@@ -21,6 +21,13 @@ pnpm tauri dev   # 开发模式
 pnpm tauri build # 产出 NSIS 安装包
 ```
 
+## CI
+
+- PR / push 到 `main`：三平台（ubuntu / windows / macos）跑 `pnpm build` + `cargo fmt --check` + `cargo clippy --workspace --all-targets -- -D warnings` + `cargo test --workspace`。
+- 推送 `v*` tag：Windows runner 跑 `pnpm tauri build`，自动把 NSIS 安装包作为 release asset 上传。
+
+工具链版本固定在 `.nvmrc`（Node 22）和 `rust-toolchain.toml`（stable，带 rustfmt / clippy）。
+
 ## 守护进程启动命令解析
 
 按顺序取第一个可用的：
