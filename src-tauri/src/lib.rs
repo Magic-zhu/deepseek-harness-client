@@ -4,6 +4,8 @@
 use dsh_profile::tasks::{PluginTaskKind, PluginTaskRunner};
 use dsh_supervisor::{self, LogStream, RestartPolicy, Supervisor, SupervisorEvent};
 use serde::Serialize;
+use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, Url, WebviewWindow};
 use tracing::{debug, error, info, warn};
 
@@ -118,6 +120,21 @@ fn open_plugins_window(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Show and focus the main window. Mirrors `open_plugins_window` so the
+/// command palette has a uniform "open X" surface.
+#[tauri::command]
+fn show_main_window(app: tauri::AppHandle) -> Result<(), String> {
+    show_window(&app, "main")
+}
+
+/// Quit the whole application (used by the command palette). Goes through
+/// `app.exit(0)` so the `RunEvent::ExitRequested` path still runs and the
+/// supervisor is stopped cleanly.
+#[tauri::command]
+fn app_quit(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
 /// Flat wrapper so the UI gets one struct with both the probe result and
 /// the resolved command string for the diagnostics card.
 #[derive(Serialize, Clone)]
@@ -201,6 +218,26 @@ fn navigate(window: &WebviewWindow, url: &Url) {
     }
 }
 
+/// Show, un-minimize, and focus the window with the given label. Returns an
+/// error if the window is not declared in tauri.conf.json.
+fn show_window(app: &AppHandle, label: &str) -> Result<(), String> {
+    let window = app
+        .get_webview_window(label)
+        .ok_or_else(|| format!("窗口 {label} 未创建"))?;
+    let _ = window.unminimize();
+    window.show().map_err(|e| e.to_string())?;
+    window.set_focus().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Open the command palette window and ping it to reset/clear state.
+/// Used by the tray-icon click and the global shortcut.
+fn open_palette(app: &AppHandle) {
+    if show_window(app, "palette").is_ok() {
+        let _ = app.emit("palette://open", ());
+    }
+}
+
 async fn forward_task(app: AppHandle, supervisor: Supervisor, home: Url) {
     let mut receiver = supervisor.subscribe();
     debug!("forward_task subscribed; entering recv loop");
@@ -266,6 +303,14 @@ pub fn run() {
     init_tracing();
 
     let app = tauri::Builder::default()
+        .on_page_load(|webview, _payload| {
+            // 全局 page-load 钩子：过滤到主窗口，重新注入快捷键监听器。
+            // 注入脚本自身通过 `__dsh_palette_listener_installed` 做了幂等，
+            // 所以每次 page-load 都调用 install_palette_shortcut 也是安全的。
+            if webview.label() == "main" {
+                install_palette_shortcut_on_webview(webview);
+            }
+        })
         .setup(|app| {
             let bin_override = std::env::var("DSH_CLIENT_BIN").ok();
             let launch = dsh_supervisor::resolve_launch(bin_override.as_deref());
@@ -325,6 +370,14 @@ pub fn run() {
                 // can render a guided recovery card.
                 let _ = app.emit("preflight://report", &report);
             }
+
+            install_tray(app).map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })?;
+
+            // 给 splash（首屏）注入一次快捷键监听；守护进程就绪后
+            // 主窗口 navigate 到 dsh 时由 Builder.on_page_load 回调重新注入。
+            if let Some(main) = app.get_webview_window("main") {
+                install_palette_shortcut_on_webview(main.as_ref());
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -333,6 +386,8 @@ pub fn run() {
             daemon_restart,
             daemon_stop,
             open_plugins_window,
+            show_main_window,
+            app_quit,
             plugin_install,
             plugin_remove,
             plugin_tasks_list,
@@ -344,9 +399,21 @@ pub fn run() {
         .expect("error while building tauri application");
 
     app.run(|app_handle, event| {
-        if let tauri::RunEvent::ExitRequested { .. } = event {
-            if let Some(state) = app_handle.try_state::<DaemonState>() {
-                state.supervisor.stop();
+        if let tauri::RunEvent::ExitRequested { code, api, .. } = event {
+            if code.is_none() {
+                // Window-close-triggered exit: keep the process alive so the
+                // tray remains usable. Hide the main window to mirror the
+                // "minimize to tray" behavior the user asked for.
+                api.prevent_exit();
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    let _ = window.hide();
+                }
+            } else {
+                // Real exit (tray "quit" menu, restart, etc.): stop the
+                // supervisor and let the process terminate.
+                if let Some(state) = app_handle.try_state::<DaemonState>() {
+                    state.supervisor.stop();
+                }
             }
         }
     });
@@ -366,4 +433,109 @@ fn init_tracing() {
         .with_env_filter(filter)
         .with_target(false)
         .try_init();
+}
+
+/// Install the system tray icon, its right-click menu, and the left-click
+/// handler that opens the command palette. Reuses `app.default_window_icon()`
+/// so no extra icon asset is required.
+fn install_tray(app: &tauri::App) -> tauri::Result<()> {
+    let show_palette_item =
+        MenuItemBuilder::with_id("show_palette", "打开命令面板").build(app)?;
+    let show_plugins_item =
+        MenuItemBuilder::with_id("show_plugins", "打开插件管理").build(app)?;
+    let show_main_item = MenuItemBuilder::with_id("show_main", "打开主窗口").build(app)?;
+    let restart_item = MenuItemBuilder::with_id("restart", "重启 dsh 守护进程").build(app)?;
+    let quit_item = MenuItemBuilder::with_id("quit", "退出 DeepSeek Harness").build(app)?;
+    let sep1 = PredefinedMenuItem::separator(app)?;
+    let sep2 = PredefinedMenuItem::separator(app)?;
+
+    let tray_menu = MenuBuilder::new(app)
+        .items(&[
+            &show_palette_item,
+            &show_plugins_item,
+            &show_main_item,
+            &sep1,
+            &restart_item,
+            &sep2,
+            &quit_item,
+        ])
+        .build()?;
+
+    TrayIconBuilder::with_id("dsh-tray")
+        .icon(
+            app.default_window_icon()
+                .cloned()
+                .ok_or_else(|| tauri::Error::AssetNotFound("default window icon".into()))?,
+        )
+        .tooltip("DeepSeek Harness")
+        .menu(&tray_menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "show_palette" => open_palette(app),
+            "show_plugins" => {
+                let _ = show_window(app, "plugins");
+            }
+            "show_main" => {
+                let _ = show_window(app, "main");
+            }
+            "restart" => {
+                if let Some(state) = app.try_state::<DaemonState>() {
+                    state.supervisor.restart();
+                }
+            }
+            "quit" => app.exit(0),
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                open_palette(tray.app_handle());
+            }
+        })
+        .build(app)?;
+    Ok(())
+}
+
+/// 注入到主窗口 webview 的 keydown 监听器脚本。
+/// 命中 `Ctrl+Shift+P` 时阻止默认行为并调用 `open_plugins_window`。
+/// 与系统级全局快捷键不同，监听器只在该 webview 拿到焦点时生效，
+/// 不会和 VS Code / PowerToys 等进程抢键。
+///
+/// 注意：必须用 `__TAURI_INTERNALS__.invoke` 而不是 `__TAURI__.core.invoke`。
+/// 前者是 Tauri 2 webview 始终注入的宿主内部句柄（不受 `withGlobalTauri`
+/// 影响）；后者仅在 `withGlobalTauri: true` 时由 `withGlobalTauri.js` 注入，
+/// 而本仓库配置是 `false`，且 dsh 上游页面也不归我们控制——主窗口
+/// navigate 到 dsh 之后 `window.__TAURI__` 根本不存在，调它会抛
+/// ReferenceError，触发浏览器默认 Ctrl+Shift+P 行为（Chrome 快捷键
+/// 面板），用户感受就是"快捷键没反应"。`__TAURI_INTERNALS__` 同样
+/// 不受 dsh 自己 JS 影响，且只对宿主可见，安全。
+const PALETTE_SHORTCUT_SCRIPT: &str = r#"
+(function () {
+  if (window.__dsh_palette_listener_installed) return;
+  window.__dsh_palette_listener_installed = true;
+  window.addEventListener('keydown', function (e) {
+    if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey &&
+        (e.key === 'P' || e.key === 'p')) {
+      e.preventDefault();
+      e.stopPropagation();
+      // 用宿主内部 IPC 句柄发起命令；命令无参，必须显式传 `{}`，
+      // 否则 Tauri 内部把 undefined 当 payload 处理会序列化失败。
+      window.__TAURI_INTERNALS__.invoke('open_plugins_window', {})
+        .catch(function (err) { console.error('[dsh] open_plugins_window failed', err); });
+    }
+  }, true);
+})();
+"#;
+
+/// 把 `PALETTE_SHORTCUT_SCRIPT` 注入到指定 webview 的当前文档。
+/// 注入脚本自身用 `__dsh_palette_listener_installed` 做幂等，
+/// 所以同一文档里多次调用是安全的。
+fn install_palette_shortcut_on_webview(webview: &tauri::Webview) {
+    if let Err(err) = webview.eval(PALETTE_SHORTCUT_SCRIPT) {
+        warn!(?err, "failed to inject palette shortcut listener");
+    }
 }
