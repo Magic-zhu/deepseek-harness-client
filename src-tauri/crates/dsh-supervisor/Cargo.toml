@@ -7,6 +7,7 @@ description = "Process supervision for the dsh web daemon: spawn, readiness by U
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["io-util", "macros", "net", "process", "rt", "sync", "time"] }
+tracing = "0.1"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [

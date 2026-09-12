@@ -17,6 +17,7 @@ use std::process::Stdio;
 
 use serde::Serialize;
 use tokio::process::Command;
+use tracing::debug;
 
 /// Upstream's hard runtime requirement (mirrors `H:\code\deepseek-harness\package.json`).
 pub const REQUIRED_ENGINE: &str = "^22.19.0 || >=24.0.0";
@@ -179,7 +180,10 @@ pub async fn run_probe(
     };
 
     let version = match probe_target.as_ref() {
-        Some(bin) => probe_version(bin).await,
+        Some(bin) => {
+            debug!(?bin, ?version_source, "probing node version");
+            probe_version(bin).await
+        }
         None => None,
     };
 
@@ -211,7 +215,12 @@ pub async fn run_probe(
     }
 }
 
-const PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+/// One probe attempt may legitimately take a while on Windows: from this
+/// console-less GUI process, `cmd /c` allocation plus Defender real-time
+/// scanning of a freshly spawned node.exe can cost seconds under load.
+/// Failing closed on a slow spawn bricks startup (the supervisor never
+/// starts), so be generous — this probe runs once per app launch.
+const PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 async fn probe_version(bin: &Path) -> Option<String> {
     let mut cmd = build_probe_command(bin);
@@ -220,16 +229,40 @@ async fn probe_version(bin: &Path) -> Option<String> {
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let child = cmd.spawn().ok()?;
+    let child = match cmd.spawn() {
+        Ok(child) => child,
+        Err(err) => {
+            debug!(?bin, %err, "node probe spawn failed");
+            return None;
+        }
+    };
     let output = match tokio::time::timeout(PROBE_TIMEOUT, child.wait_with_output()).await {
         Ok(Ok(out)) => out,
-        _ => return None,
+        Ok(Err(err)) => {
+            debug!(?bin, %err, "node probe wait failed");
+            return None;
+        }
+        Err(_) => {
+            debug!(?bin, timeout = ?PROBE_TIMEOUT, "node probe timed out");
+            return None;
+        }
     };
     if !output.status.success() {
+        debug!(
+            ?bin,
+            status = ?output.status,
+            stderr = %String::from_utf8_lossy(&output.stderr),
+            "node probe exited non-zero"
+        );
         return None;
     }
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     if stdout.is_empty() {
+        debug!(
+            ?bin,
+            stderr = %String::from_utf8_lossy(&output.stderr),
+            "node probe produced empty stdout"
+        );
         None
     } else {
         Some(stdout)
@@ -237,11 +270,24 @@ async fn probe_version(bin: &Path) -> Option<String> {
 }
 
 fn build_probe_command(bin: &Path) -> Command {
-    // Windows .cmd shims must be run through cmd.exe (mirrors resolve.rs).
+    // npm/pnpm .cmd/.bat shims only run through cmd.exe, but a real .exe
+    // spawns directly — one less process, no transient console allocation,
+    // and no console flash from this GUI-subprocess parent.
     #[cfg(windows)]
     {
-        let mut c = Command::new("cmd");
-        c.arg("/c").arg(bin);
+        let is_exe = bin
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("exe"))
+            .unwrap_or(false);
+        let mut c = if is_exe {
+            Command::new(bin)
+        } else {
+            let mut c = Command::new("cmd");
+            c.arg("/c").arg(bin);
+            c
+        };
+        c.creation_flags(crate::resolve::CREATE_NO_WINDOW);
         c
     }
     #[cfg(unix)]

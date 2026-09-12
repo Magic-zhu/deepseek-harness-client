@@ -11,7 +11,7 @@ use tokio::process::{Child, Command};
 
 /// Windows `CREATE_NO_WINDOW`: never flash a console for the daemon tree.
 #[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+pub(crate) const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// How to launch `dsh web`: program plus the full argument vector.
 #[derive(Debug, Clone)]
